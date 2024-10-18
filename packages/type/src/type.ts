@@ -1,4 +1,4 @@
-type Constructor<T = any> = new () => T
+export type Constructor<T = any> = new () => T
 
 /* TODO allow recursive type description + check recursive types
  * + check recursive objects!
@@ -93,13 +93,11 @@ export class HardCodedTypeDefinition extends ComplexTypeDefinition {
 	}
 }
 
-export const wildcards = {
-	any: new HardCodedTypeDefinition('any', () => undefined),
-	never: new HardCodedTypeDefinition(
+export const any = new HardCodedTypeDefinition('any', () => undefined),
+	never = new HardCodedTypeDefinition(
 		'never',
-		(value: any): TypeError => new GivenTypeErrorDesc('Unexpected value', value, wildcards.never)
+		(value: any): TypeError => new GivenTypeErrorDesc('Unexpected value', value, never)
 	)
-}
 
 //#endregion
 //#region Complex types
@@ -176,8 +174,8 @@ export class ArrayTypeDefinition extends ComplexTypeDefinition {
 
 	check(value: any): TypeError {
 		if (!Array.isArray(value)) return new GivenTypeErrorDesc('Not an array', value, this)
-		if (this.items === wildcards.any) return undefined
-		if (this.items === wildcards.never && value.length > 0)
+		if (this.items === any) return undefined
+		if (this.items === never && value.length > 0)
 			return new GivenTypeErrorDesc('No entries allowed', value, this)
 		return firstError(
 			value,
@@ -203,7 +201,7 @@ type ObjectTypeOptions = {
  */
 export let defaultObjectOptions: ObjectTypeOptions = {
 	nullable: false,
-	others: wildcards.never
+	others: never
 }
 
 export class ObjectTypeDefinition extends ComplexTypeDefinition {
@@ -241,7 +239,7 @@ export class ObjectTypeDefinition extends ComplexTypeDefinition {
 							new ObjectTypeErrorDesc('Wrong specified property', value, this, error, key)
 					) ||
 					// Check additional properties
-					guarded(options.others === wildcards.any, () =>
+					guarded(options.others === any, () =>
 						firstError(
 							Object.entries(value),
 							([key, value]) => !(key in this.properties) && typeError(value, options.others),
@@ -381,7 +379,7 @@ export function and(...alternatives: TypeDefinition[]): ComplexTypeDefinition {
 	return rv.alternatives.length === 1 ? rv.alternatives[0] : rv
 }
 
-export function array(items: TypeDefinition): ArrayTypeDefinition {
+export function array(items: TypeDefinition = any): ArrayTypeDefinition {
 	return new ArrayTypeDefinition(items)
 }
 

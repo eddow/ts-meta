@@ -1,48 +1,112 @@
-import { TypeDefinition, typeError, wildcards } from './type'
+import { any, array, Constructor, tuple, TypeDefinition, typeError } from './type'
 import 'reflect-metadata'
+
+function cleanInstance(instance: any) {
+	for (const own of Object.getOwnPropertyNames(instance)) {
+		// Make sure it's not an instance property and uses the accessors
+		const value = instance[own]
+		delete instance[own]
+		instance[own] = value
+	}
+}
+
+class ValidationError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'ValidationError'
+	}
+}
+
+/**
+ * Override default behaviors here
+ */
+export const metaValidation = {
+	warn(...args: any[]) {
+		console.warn(...args)
+	}
+}
 
 export interface ValidatedFunction {
 	arguments: TypeDefinition[]
 	returnType: TypeDefinition
-	mandatory?: number
-	rest?: true
+	optionals?: number
+	rest?: TypeDefinition
 }
-
-export interface ValidatedClass<T extends object = any> {
-	properties?: Partial<Record<keyof T, TypeDefinition>>
+function metadata<T extends object = any>(
+	mdKey: string,
+	target: T,
+	propertyKey: keyof T & (string | symbol)
+): Partial<ValidatedFunction> {
+	let fct: Partial<ValidatedFunction> = Reflect.getMetadata(mdKey, <T>target, propertyKey)
+	if (!fct) Reflect.defineMetadata(mdKey, (fct = {}), <T>target, propertyKey)
+	return fct
 }
-
-export function typed<T extends object = any>(target: T, propertyKey: string, index: number): void
+/*
+export function typed<T extends object = any>(target: T): Function
+export function typed<T extends object = any>(
+	target: T,
+	propertyKey: keyof T & (string | symbol)
+): void
+export function typed<T extends object = any>(
+	target: T,
+	propertyKey: keyof T & (string | symbol),
+	index: number
+): void*/
 export function typed<T extends object = any>(
 	type?: TypeDefinition
-): (target: T, propertyKey: keyof T, index?: number) => void
+): (target: T, propertyKey?: keyof T & (string | symbol), index?: number) => void
 export function typed<T extends object = any>(
-	target: T | TypeDefinition = wildcards.any,
-	propertyKey?: keyof T,
-	index?: number
-) {
-	let type: TypeDefinition =
-		propertyKey === undefined
-			? target
-			: index === undefined
-				? Reflect.getMetadata('design:type', <T>target, <string | symbol>propertyKey)
-				: Reflect.getMetadata('design:paramtypes', <T>target, <string | symbol>propertyKey)[index]
-	if (type === Object) type = wildcards.any
-	function decoration(target: T, propertyKey: keyof T, index?: number): void {
+	type?: TypeDefinition
+): (target: T | Constructor, propertyKey?: keyof T & (string | symbol), index?: number) => void {
+	return function typedDecoration(
+		target: T | Constructor,
+		propertyKey?: keyof T & (string | symbol),
+		index?: number
+	): void | Function {
+		if (propertyKey === undefined) {
+			// class decorator
+			return class extends (<Constructor>target) {
+				constructor() {
+					super()
+					cleanInstance(this)
+				}
+			}
+		}
+		if (!type) {
+			type =
+				index === undefined
+					? Reflect.getMetadata('design:type', <T>target, propertyKey)
+					: Reflect.getMetadata('design:paramtypes', <T>target, propertyKey)[index]
+			if (type === Object) {
+				type = any
+				metaValidation.warn(
+					index === undefined
+						? `Type for property ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
+	Please specify it explicitly or decorate with « @typed(any) ».`
+						: `Type for parameter ${index} of method ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
+	Please specify it explicitly or decorate with « @typed(any) ».`
+				)
+			}
+			if (type === Array) {
+				type = array(any)
+				metaValidation.warn(
+					index === undefined
+						? `Type of array elements for property ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
+	Please specify it explicitly or decorate with « @typed(Array) » to assume « any[] ».`
+						: `Type of array elements for parameter ${index} of method ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
+	Please specify it explicitly or decorate with « @typed(Array) » to assume « any[] ».`
+				)
+			}
+		}
 		if (index !== undefined) {
 			// Parameter
-			const fct = <Partial<ValidatedFunction>>target[propertyKey]
+			const fct = metadata('function:descriptor', <T>target, propertyKey)
 			if (!fct.arguments) fct.arguments = []
 			fct.arguments[index] = type
 		} else {
-			// Property
-			const cls = <Partial<ValidatedClass<T>>>target
-			if (!cls.properties) cls.properties = {}
-			cls.properties[propertyKey] = type
-			let internalValue = target[propertyKey]
+			let internalValue = (<T>target)[propertyKey]
 			Object.defineProperty(target, propertyKey, {
 				enumerable: true,
-				writable: true,
 				set(value: any) {
 					const error = typeError(value, type)
 					if (error) throw error
@@ -54,5 +118,100 @@ export function typed<T extends object = any>(
 			})
 		}
 	}
-	return propertyKey !== undefined ? decoration(<T>target, propertyKey, index) : decoration
+}
+
+export function optionals<T extends object = any>(
+	target: T,
+	propertyKey: keyof T & (string | symbol),
+	index: number
+) {
+	const fct = metadata('function:descriptor', <T>target, propertyKey)
+	if (fct.optionals !== undefined)
+		throw new ValidationError(
+			`@optionals can only be specified once by method. Here, at argument ${fct.optionals} and ${index}.`
+		)
+	fct.optionals = index
+}
+
+export function rest<T extends object = any>(type: TypeDefinition) {
+	return function restDecoration(
+		target: T,
+		propertyKey: keyof T & (string | symbol),
+		index: number
+	) {
+		const fct = metadata('function:descriptor', <T>target, propertyKey)
+		if (
+			index !==
+			Reflect.getMetadata('design:paramtypes', <T>target, <string | symbol>propertyKey).length - 1
+		)
+			throw new ValidationError(
+				`@rest can only be used as last argument of a method. Here, at argument ${index}.`
+			)
+		fct.rest = type
+	}
+}
+
+export function validated<T extends object = any>(
+	target: T,
+	propertyKey: string,
+	descriptor: PropertyDescriptor
+): void
+export function validated<T extends object = any>(
+	type?: TypeDefinition
+): (
+	target: T,
+	propertyKey: keyof T & (string | symbol),
+	descriptor: PropertyDescriptor
+) => PropertyDescriptor
+export function validated<T extends object = any>(
+	target?: T | TypeDefinition, // type definition === undefined => any
+	propertyKey?: keyof T & (string | symbol),
+	descriptor?: PropertyDescriptor
+) {
+	const returnType =
+		propertyKey === undefined
+			? <TypeDefinition>target
+			: Reflect.getMetadata('design:returntype', <T>target, <string | symbol>propertyKey)
+	function validatedDecoration(
+		target: T,
+		propertyKey: keyof T & (string | symbol),
+		descriptor: PropertyDescriptor
+	) {
+		const fct = <Partial<ValidatedFunction>>target[propertyKey]
+		fct.returnType = returnType
+		if (!fct.arguments) fct.arguments = []
+		fct.arguments = Reflect.getMetadata(
+			'design:paramtypes',
+			<T>target,
+			<string | symbol>propertyKey
+		).map((paramType: Constructor, index: number) => {
+			if (!fct.arguments![index]) fct.arguments![index] = paramType
+		})
+		const done = <ValidatedFunction>fct
+		const totalLength = done.rest ? done.arguments.length - 1 : done.arguments.length
+		const argsTuple = done.optionals
+			? tuple(
+					done.arguments?.slice(0, done.optionals),
+					done.arguments?.slice(done.optionals, totalLength),
+					done.rest
+				)
+			: tuple(done.arguments?.slice(0, totalLength), [], done.rest)
+
+		return <PropertyDescriptor>{
+			...descriptor,
+			value: function validator(...args: any[]) {
+				const argError = typeError(args, argsTuple)
+				if (argError) throw argError
+				const result = descriptor.value.apply(this, args)
+				if (done.returnType !== undefined) {
+					const resultError = typeError(result, done.returnType)
+					if (resultError) throw resultError
+				}
+				return result
+			}
+		}
+	}
+	return propertyKey !== undefined
+		? validatedDecoration(<T>target, propertyKey, descriptor!)
+		: validatedDecoration
 }

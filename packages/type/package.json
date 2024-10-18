@@ -8,13 +8,13 @@
 		"test": "jest",
 		"test:coverage": "jest --coverage",
 		"prettier": "prettier --write .",
-		"build": "rollup -c",
+		"build": "tsc",
 		"build-umd": "rollup -c rollup.umd.js --watch",
 		"build-extract": "rollup -c rollup.extract.js"
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/eddow/linxjs.git"
+		"url": "git+https://github.com/eddow/ts-meta.git"
 	},
 	"author": "fmdm",
 	"license": "ISC",
@@ -32,14 +32,14 @@
 		"rollup-plugin-typescript2": "^0.36.0",
 		"ts-jest": "^29.1.2",
 		"tslib": "^2.6.2",
-		"tsx": "^4.7.3",
-		"typescript": "^5.4.5"
+		"tsx": "^4.7.3"
 	},
 	"optionalDependencies": {
 		"@rollup/rollup-linux-x64-gnu": "^4.18.0",
 		"@rollup/rollup-win32-x64-msvc": "^4.18.0"
 	},
 	"dependencies": {
-		"reflect-metadata": "^0.2.2"
+		"reflect-metadata": "^0.2.2",
+		"typescript": "^5.6.3"
 	}
 }

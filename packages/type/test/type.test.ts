@@ -16,8 +16,7 @@ import {
 	OrTypeErrorDesc,
 	SizeTypeErrorDesc,
 	tuple,
-	TypeErrorDesc,
-	wildcards
+	never
 } from '../src'
 
 describe('type', () => {
@@ -151,7 +150,7 @@ describe('type', () => {
 				'Wrong other property',
 				{ x: 5, y: 6 },
 				object({ x: Number }),
-				new GivenTypeErrorDesc('Unexpected value', 6, wildcards.never),
+				new GivenTypeErrorDesc('Unexpected value', 6, never),
 				'y'
 			)
 		)

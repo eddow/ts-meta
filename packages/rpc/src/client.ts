@@ -1,6 +1,5 @@
 import { Transferred } from './common'
 export * from './transferable'
-export * from './type'
 export * from './common'
 
 export class RpcClient<G extends Record<string, any>> {
