@@ -1,0 +1,18 @@
+{
+	"name": "ts-meta",
+	"private": true,
+	"author": "fmdm",
+	"license": "ISC",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/eddow/linxjs.git"
+	},
+	"scripts": {
+		"test": "jest",
+		"test:coverage": "jest --coverage",
+		"prettier": "prettier --write ."
+	},
+	"workspaces": [
+		"packages/*"
+	]
+}

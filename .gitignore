@@ -1,0 +1,8 @@
+.DS_Store
+node_modules
+/.svelte-kit
+.env.*
+!.env.example
+/temp
+coverage
+.vscode/settings.json

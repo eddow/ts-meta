@@ -1,0 +1,11 @@
+{
+	"transform": {
+		"^.+\\.(ts|tsx)$": "ts-jest"
+	},
+	"testEnvironment": "node",
+	"moduleFileExtensions": ["ts", "tsx", "js", "jsx", "json", "node"],
+	"moduleNameMapper": {
+		"^@linxjs/(.*)$": "<rootDir>/packages/$1/src"
+	},
+	"coverageReporters": ["lcov"]
+}
