@@ -1,6 +1,11 @@
 import { any, array, Constructor, tuple, TypeDefinition, typeError } from './type'
 import 'reflect-metadata'
 
+/**
+ * At least with ts-jest, a field initialized in the constructor will be both an accessor (get/set) in the prototype
+ * AND a field in the instance.
+ * @param instance instance to clean
+ */
 function cleanInstance(instance: any) {
 	for (const own of Object.getOwnPropertyNames(instance)) {
 		// Make sure it's not an instance property and uses the accessors
@@ -27,31 +32,27 @@ export const metaValidation = {
 }
 
 export interface ValidatedFunction {
-	arguments: TypeDefinition[]
+	argumentTypes: TypeDefinition[]
 	returnType: TypeDefinition
 	optionals?: number
 	rest?: TypeDefinition
 }
-function metadata<T extends object = any>(
+function metadata<DataType extends object>(
 	mdKey: string,
-	target: T,
-	propertyKey: keyof T & (string | symbol)
-): Partial<ValidatedFunction> {
-	let fct: Partial<ValidatedFunction> = Reflect.getMetadata(mdKey, <T>target, propertyKey)
-	if (!fct) Reflect.defineMetadata(mdKey, (fct = {}), <T>target, propertyKey)
-	return fct
+	target: any,
+	propertyKey?: string | symbol
+): Partial<DataType> {
+	let md: Partial<DataType> =
+		propertyKey !== undefined
+			? Reflect.getMetadata(mdKey, target, propertyKey)
+			: Reflect.getMetadata(mdKey, target)
+	if (!md) {
+		if (propertyKey !== undefined) Reflect.defineMetadata(mdKey, (md = {}), target, propertyKey)
+		else Reflect.defineMetadata(mdKey, (md = {}), target)
+	}
+	return md
 }
-/*
-export function typed<T extends object = any>(target: T): Function
-export function typed<T extends object = any>(
-	target: T,
-	propertyKey: keyof T & (string | symbol)
-): void
-export function typed<T extends object = any>(
-	target: T,
-	propertyKey: keyof T & (string | symbol),
-	index: number
-): void*/
+
 export function typed<T extends object = any>(
 	type?: TypeDefinition
 ): (target: T, propertyKey?: keyof T & (string | symbol), index?: number) => void
@@ -100,9 +101,9 @@ export function typed<T extends object = any>(
 		}
 		if (index !== undefined) {
 			// Parameter
-			const fct = metadata('function:descriptor', <T>target, propertyKey)
-			if (!fct.arguments) fct.arguments = []
-			fct.arguments[index] = type
+			const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
+			if (!fct.argumentTypes) fct.argumentTypes = []
+			fct.argumentTypes[index] = type
 		} else {
 			let internalValue = (<T>target)[propertyKey]
 			Object.defineProperty(target, propertyKey, {
@@ -125,7 +126,7 @@ export function optionals<T extends object = any>(
 	propertyKey: keyof T & (string | symbol),
 	index: number
 ) {
-	const fct = metadata('function:descriptor', <T>target, propertyKey)
+	const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
 	if (fct.optionals !== undefined)
 		throw new ValidationError(
 			`@optionals can only be specified once by method. Here, at argument ${fct.optionals} and ${index}.`
@@ -139,7 +140,7 @@ export function rest<T extends object = any>(type: TypeDefinition) {
 		propertyKey: keyof T & (string | symbol),
 		index: number
 	) {
-		const fct = metadata('function:descriptor', <T>target, propertyKey)
+		const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
 		if (
 			index !==
 			Reflect.getMetadata('design:paramtypes', <T>target, <string | symbol>propertyKey).length - 1
@@ -177,25 +178,31 @@ export function validated<T extends object = any>(
 		propertyKey: keyof T & (string | symbol),
 		descriptor: PropertyDescriptor
 	) {
-		const fct = <Partial<ValidatedFunction>>target[propertyKey]
-		fct.returnType = returnType
-		if (!fct.arguments) fct.arguments = []
-		fct.arguments = Reflect.getMetadata(
+		const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
+		fct.returnType = returnType || Reflect.getMetadata('design:returntype', target, propertyKey)
+		if (!returnType) {
+			// TODO validate and warn
+		}
+		if (!fct.argumentTypes) fct.argumentTypes = []
+		fct.argumentTypes = Reflect.getMetadata(
 			'design:paramtypes',
 			<T>target,
 			<string | symbol>propertyKey
 		).map((paramType: Constructor, index: number) => {
-			if (!fct.arguments![index]) fct.arguments![index] = paramType
+			if (fct.argumentTypes![index]) return fct.argumentTypes![index]
+			// TODO validate and warn
+			return paramType
 		})
 		const done = <ValidatedFunction>fct
-		const totalLength = done.rest ? done.arguments.length - 1 : done.arguments.length
-		const argsTuple = done.optionals
-			? tuple(
-					done.arguments?.slice(0, done.optionals),
-					done.arguments?.slice(done.optionals, totalLength),
-					done.rest
-				)
-			: tuple(done.arguments?.slice(0, totalLength), [], done.rest)
+		const totalLength = done.rest ? done.argumentTypes.length - 1 : done.argumentTypes.length
+		const argsTuple =
+			done.optionals !== undefined
+				? tuple(
+						done.argumentTypes?.slice(0, done.optionals),
+						done.argumentTypes?.slice(done.optionals, totalLength),
+						done.rest
+					)
+				: tuple(done.argumentTypes?.slice(0, totalLength), [], done.rest)
 
 		return <PropertyDescriptor>{
 			...descriptor,
