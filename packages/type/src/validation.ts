@@ -1,4 +1,4 @@
-import { any, array, Constructor, tuple, TypeDefinition, typeError } from './type'
+import { any, array, NoParamConstructor, tuple, TypeDefinition, typeError } from './type'
 import 'reflect-metadata'
 
 /**
@@ -30,7 +30,7 @@ export const metaValidation = {
 		console.warn(...args)
 	}
 }
-
+// TODO: watched array/object ?
 export interface ValidatedFunction {
 	argumentTypes: TypeDefinition[]
 	returnType: TypeDefinition
@@ -133,7 +133,7 @@ function validateMethod<T extends object = any>(
 		'design:paramtypes',
 		<T>target,
 		<string | symbol>propertyKey
-	).map((paramType: Constructor, index: number) => {
+	).map((paramType: NoParamConstructor, index: number) => {
 		if (fct.argumentTypes![index]) return fct.argumentTypes![index]
 		// TODO validate and warn
 		return paramType
@@ -164,8 +164,10 @@ function validateMethod<T extends object = any>(
 	}
 }
 
-function validateConstructor<T extends object = any>(target: Constructor<T>): Constructor<T> {
-	return <Constructor<T>>class extends (<Constructor>target) {
+function validateConstructor<T extends object = any>(
+	target: NoParamConstructor<T>
+): NoParamConstructor<T> {
+	return <NoParamConstructor<T>>class extends (<NoParamConstructor>target) {
 		constructor() {
 			super()
 			cleanInstance(this)
@@ -176,17 +178,17 @@ function validateConstructor<T extends object = any>(target: Constructor<T>): Co
 export function typed<T extends object = any>(
 	type?: TypeDefinition
 ): (
-	target: T | Constructor,
+	target: T | NoParamConstructor,
 	propertyKey?: keyof T & (string | symbol),
 	index?: number | PropertyDescriptor
 ) => any {
 	return function typedDecoration(
-		target: T | Constructor,
+		target: T | NoParamConstructor,
 		propertyKey?: keyof T & (string | symbol),
 		index?: number | PropertyDescriptor
-	): void | PropertyDescriptor | Constructor<T> {
+	): void | PropertyDescriptor | NoParamConstructor<T> {
 		return propertyKey === undefined
-			? validateConstructor(<Constructor<T>>target)
+			? validateConstructor(<NoParamConstructor<T>>target)
 			: index === undefined
 				? validateField(type, <T>target, propertyKey)
 				: typeof index === 'number'

@@ -1,4 +1,4 @@
-export type Constructor<T = any> = new () => T
+export type NoParamConstructor<T = any> = new () => T
 
 /* TODO allow recursive type description + check recursive types
  * + check recursive objects!
@@ -9,7 +9,7 @@ interface ObjectDefinition {
 }
 export type TypeDefinition =
 	| ComplexTypeDefinition
-	| Constructor
+	| NoParamConstructor
 	| undefined
 	| null
 	| boolean
@@ -327,7 +327,7 @@ export class TupleTypeDefinition extends ComplexTypeDefinition {
 	}
 }
 
-const primitiveTypes: { [key: string]: Constructor } = {
+const primitiveTypes: { [key: string]: NoParamConstructor } = {
 	boolean: Boolean,
 	number: Number,
 	string: String,
@@ -351,7 +351,7 @@ class PrimitiveTypeDefinition extends ComplexTypeDefinition {
 }
 
 class InstanceTypeDefinition extends ComplexTypeDefinition {
-	constructor(public readonly type: Constructor) {
+	constructor(public readonly type: NoParamConstructor) {
 		super()
 	}
 	check(value: any): TypeError {
@@ -361,7 +361,7 @@ class InstanceTypeDefinition extends ComplexTypeDefinition {
 		)
 	}
 }
-const primitiveTypeDefinition = new Map<Constructor, PrimitiveTypeDefinition>([
+const primitiveTypeDefinition = new Map<NoParamConstructor, PrimitiveTypeDefinition>([
 	[Number, PrimitiveTypeDefinition.number],
 	[String, PrimitiveTypeDefinition.string],
 	[Boolean, PrimitiveTypeDefinition.boolean]
@@ -412,7 +412,7 @@ export let primitive = {
 	boolean: PrimitiveTypeDefinition.boolean
 }
 
-export function instance(type: Constructor): InstanceTypeDefinition {
+export function instance(type: NoParamConstructor): InstanceTypeDefinition {
 	return new InstanceTypeDefinition(type)
 }
 

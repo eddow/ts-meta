@@ -12,6 +12,18 @@ describe('validation', () => {
 		expect(test.foo).toBe('qwe')
 		expect(() => (test.foo = <string>(<unknown>5))).toThrow('Wrong primitive')
 	})
+	it('inherits', () => {
+		@typed()
+		class Test {
+			@typed()
+			foo: string = ''
+		}
+		class Bis extends Test {}
+		const test = new Bis()
+		test.foo = 'qwe'
+		expect(test.foo).toBe('qwe')
+		expect(() => (test.foo = <string>(<unknown>5))).toThrow('Wrong primitive')
+	})
 	it('functions', () => {
 		@typed()
 		class Test {
