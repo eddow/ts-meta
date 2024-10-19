@@ -34,17 +34,12 @@ export class numberPool {
 	}
 }
 
-export type NoParamConstructor<T = any> = new () => T
+export type Constructor<Class extends object = any, Params extends any[] = any[]> = new (
+	...args: Params
+) => Class
 
 export type PropertiesOf<T> = {
 	[K in keyof T as T[K] extends Function ? never : K]: T[K]
-}
-
-export function initialized<T extends object>(
-	target: NoParamConstructor<T>,
-	values: PropertiesOf<T>
-): T {
-	return Object.assign(new target(), values)
 }
 
 export function metadata<DataType extends object | any[]>(
