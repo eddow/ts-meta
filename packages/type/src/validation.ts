@@ -53,71 +53,145 @@ function metadata<DataType extends object>(
 	return md
 }
 
+function validateParameters<T extends object = any>(
+	type: TypeDefinition,
+	target: T,
+	propertyKey: keyof T & (string | symbol),
+	index: number
+): void {
+	if (!type) {
+		// Infer type from the metadata
+		type = Reflect.getMetadata('design:paramtypes', target, propertyKey)[index]
+		switch (type) {
+			case Object:
+				type = any
+				metaValidation.warn(
+					`Type for parameter ${index} of method ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred. \`any\` used.`
+				)
+				break
+			case Array:
+				type = array(any)
+				metaValidation.warn(`Type of array elements for parameter ${index} of method ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
+	Use « @typed(Array) » to assume « any[] ».`)
+				break
+		}
+	}
+	const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
+	if (!fct.argumentTypes) fct.argumentTypes = []
+	fct.argumentTypes[index] = type
+}
+
+function validateField<T extends object = any>(
+	type: TypeDefinition,
+	target: T,
+	propertyKey: keyof T & (string | symbol)
+): void {
+	if (!type) {
+		// Infer type from the metadata
+		type = Reflect.getMetadata('design:type', target, propertyKey)
+		switch (type) {
+			case Object:
+				type = any
+				metaValidation.warn(
+					`Type for field ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred. \`any\` used.`
+				)
+				break
+			case Array:
+				type = array(any)
+				metaValidation.warn(`Type of array elements for property ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
+	Use « @typed(Array) » to assume « any[] ».`)
+				break
+		}
+	}
+	let internalValue = (<T>target)[propertyKey]
+	Object.defineProperty(target, propertyKey, {
+		enumerable: true,
+		set(value: any) {
+			const error = typeError(value, type)
+			if (error) throw error
+			internalValue = value
+		},
+		get() {
+			return internalValue
+		}
+	})
+}
+
+function validateMethod<T extends object = any>(
+	type: TypeDefinition,
+	target: T,
+	propertyKey: keyof T & (string | symbol),
+	descriptor: PropertyDescriptor
+): PropertyDescriptor {
+	const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
+	fct.returnType = type || Reflect.getMetadata('design:returntype', target, propertyKey)
+	if (!type) {
+		// TODO validate and warn
+	}
+	if (!fct.argumentTypes) fct.argumentTypes = []
+	fct.argumentTypes = Reflect.getMetadata(
+		'design:paramtypes',
+		<T>target,
+		<string | symbol>propertyKey
+	).map((paramType: Constructor, index: number) => {
+		if (fct.argumentTypes![index]) return fct.argumentTypes![index]
+		// TODO validate and warn
+		return paramType
+	})
+	const done = <ValidatedFunction>fct
+	const totalLength = done.rest ? done.argumentTypes.length - 1 : done.argumentTypes.length
+	const argsTuple =
+		done.optionals !== undefined
+			? tuple(
+					done.argumentTypes?.slice(0, done.optionals),
+					done.argumentTypes?.slice(done.optionals, totalLength),
+					done.rest
+				)
+			: tuple(done.argumentTypes?.slice(0, totalLength), [], done.rest)
+
+	return <PropertyDescriptor>{
+		...descriptor,
+		value: function validator(...args: any[]) {
+			const argError = typeError(args, argsTuple)
+			if (argError) throw argError
+			const result = descriptor.value.apply(this, args)
+			if (done.returnType !== undefined) {
+				const resultError = typeError(result, done.returnType)
+				if (resultError) throw resultError
+			}
+			return result
+		}
+	}
+}
+
+function validateConstructor<T extends object = any>(target: Constructor<T>): Constructor<T> {
+	return <Constructor<T>>class extends (<Constructor>target) {
+		constructor() {
+			super()
+			cleanInstance(this)
+		}
+	}
+}
+
 export function typed<T extends object = any>(
 	type?: TypeDefinition
-): (target: T, propertyKey?: keyof T & (string | symbol), index?: number) => void
-export function typed<T extends object = any>(
-	type?: TypeDefinition
-): (target: T | Constructor, propertyKey?: keyof T & (string | symbol), index?: number) => void {
+): (
+	target: T | Constructor,
+	propertyKey?: keyof T & (string | symbol),
+	index?: number | PropertyDescriptor
+) => any {
 	return function typedDecoration(
 		target: T | Constructor,
 		propertyKey?: keyof T & (string | symbol),
-		index?: number
-	): void | Function {
-		if (propertyKey === undefined) {
-			// class decorator
-			return class extends (<Constructor>target) {
-				constructor() {
-					super()
-					cleanInstance(this)
-				}
-			}
-		}
-		if (!type) {
-			type =
-				index === undefined
-					? Reflect.getMetadata('design:type', <T>target, propertyKey)
-					: Reflect.getMetadata('design:paramtypes', <T>target, propertyKey)[index]
-			if (type === Object) {
-				type = any
-				metaValidation.warn(
-					index === undefined
-						? `Type for property ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
-	Please specify it explicitly or decorate with « @typed(any) ».`
-						: `Type for parameter ${index} of method ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
-	Please specify it explicitly or decorate with « @typed(any) ».`
-				)
-			}
-			if (type === Array) {
-				type = array(any)
-				metaValidation.warn(
-					index === undefined
-						? `Type of array elements for property ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
-	Please specify it explicitly or decorate with « @typed(Array) » to assume « any[] ».`
-						: `Type of array elements for parameter ${index} of method ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
-	Please specify it explicitly or decorate with « @typed(Array) » to assume « any[] ».`
-				)
-			}
-		}
-		if (index !== undefined) {
-			// Parameter
-			const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
-			if (!fct.argumentTypes) fct.argumentTypes = []
-			fct.argumentTypes[index] = type
-		} else {
-			let internalValue = (<T>target)[propertyKey]
-			Object.defineProperty(target, propertyKey, {
-				enumerable: true,
-				set(value: any) {
-					const error = typeError(value, type)
-					if (error) throw error
-					internalValue = value
-				},
-				get() {
-					return internalValue
-				}
-			})
-		}
+		index?: number | PropertyDescriptor
+	): void | PropertyDescriptor | Constructor<T> {
+		return propertyKey === undefined
+			? validateConstructor(<Constructor<T>>target)
+			: index === undefined
+				? validateField(type, <T>target, propertyKey)
+				: typeof index === 'number'
+					? validateParameters(type, <T>target, propertyKey, index)
+					: validateMethod(type, <T>target, propertyKey, index)
 	}
 }
 
@@ -150,75 +224,4 @@ export function rest<T extends object = any>(type: TypeDefinition) {
 			)
 		fct.rest = type
 	}
-}
-
-export function validated<T extends object = any>(
-	target: T,
-	propertyKey: string,
-	descriptor: PropertyDescriptor
-): void
-export function validated<T extends object = any>(
-	type?: TypeDefinition
-): (
-	target: T,
-	propertyKey: keyof T & (string | symbol),
-	descriptor: PropertyDescriptor
-) => PropertyDescriptor
-export function validated<T extends object = any>(
-	target?: T | TypeDefinition, // type definition === undefined => any
-	propertyKey?: keyof T & (string | symbol),
-	descriptor?: PropertyDescriptor
-) {
-	const returnType =
-		propertyKey === undefined
-			? <TypeDefinition>target
-			: Reflect.getMetadata('design:returntype', <T>target, <string | symbol>propertyKey)
-	function validatedDecoration(
-		target: T,
-		propertyKey: keyof T & (string | symbol),
-		descriptor: PropertyDescriptor
-	) {
-		const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
-		fct.returnType = returnType || Reflect.getMetadata('design:returntype', target, propertyKey)
-		if (!returnType) {
-			// TODO validate and warn
-		}
-		if (!fct.argumentTypes) fct.argumentTypes = []
-		fct.argumentTypes = Reflect.getMetadata(
-			'design:paramtypes',
-			<T>target,
-			<string | symbol>propertyKey
-		).map((paramType: Constructor, index: number) => {
-			if (fct.argumentTypes![index]) return fct.argumentTypes![index]
-			// TODO validate and warn
-			return paramType
-		})
-		const done = <ValidatedFunction>fct
-		const totalLength = done.rest ? done.argumentTypes.length - 1 : done.argumentTypes.length
-		const argsTuple =
-			done.optionals !== undefined
-				? tuple(
-						done.argumentTypes?.slice(0, done.optionals),
-						done.argumentTypes?.slice(done.optionals, totalLength),
-						done.rest
-					)
-				: tuple(done.argumentTypes?.slice(0, totalLength), [], done.rest)
-
-		return <PropertyDescriptor>{
-			...descriptor,
-			value: function validator(...args: any[]) {
-				const argError = typeError(args, argsTuple)
-				if (argError) throw argError
-				const result = descriptor.value.apply(this, args)
-				if (done.returnType !== undefined) {
-					const resultError = typeError(result, done.returnType)
-					if (resultError) throw resultError
-				}
-				return result
-			}
-		}
-	}
-	return propertyKey !== undefined
-		? validatedDecoration(<T>target, propertyKey, descriptor!)
-		: validatedDecoration
 }
