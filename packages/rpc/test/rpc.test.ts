@@ -13,7 +13,7 @@ class UserInterface {
 	readonly id: number = 0
 	name: string = ''
 
-	@sided('Client')
+	@sided('client')
 	update(change: Partial<PropertiesOf<UserInterface>>) {
 		return client.define<void>()
 	}
@@ -21,7 +21,7 @@ class UserInterface {
 
 class UserListInterface {
 	connected: boolean = false
-	@sided('Server')
+	@sided('server')
 	create(name: string) {
 		return server.define<UserInterface>()
 	}

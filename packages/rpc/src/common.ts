@@ -3,11 +3,6 @@ import { metadata, Constructor, PropertiesOf } from './utils'
 
 type Rv<T, R> = (x: T) => R
 
-export interface Messenger {
-	sendMessage(method: string, ...args: any[]): Promise<void>
-	getMessages(): AsyncGenerator<{ method: string; args: any[] }>
-}
-
 /**
  * Removes all properties that are `never`
  */
