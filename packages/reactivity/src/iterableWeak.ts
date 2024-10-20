@@ -2,13 +2,13 @@ export class IterableWeakMap<K extends WeakKey, V> implements Map<K, V> {
 	private uuids = new WeakMap<K, string>()
 	private refs: Record<string, [WeakRef<K>, any]> = {}
 	private createIterator<I>(cb: (key: K, value: V) => I): MapIterator<I> {
-		const that = this
+		const { refs } = this
 		return (function* () {
-			for (const uuid of Object.keys(that.refs)) {
-				const [keyRef, value] = that.refs[uuid],
+			for (const uuid of Object.keys(refs)) {
+				const [keyRef, value] = refs[uuid],
 					key = keyRef.deref()
 				if (key) yield cb(key, value)
-				else delete that.refs[uuid]
+				else delete refs[uuid]
 			}
 			return undefined
 		})()
@@ -70,12 +70,12 @@ export class IterableWeakSet<K extends WeakKey> implements Set<K> {
 	private uuids = new WeakMap<K, string>()
 	private refs: Record<string, WeakRef<K>> = {}
 	private createIterator<I>(cb: (key: K) => I): MapIterator<I> {
-		const that = this
+		const { refs } = this
 		return (function* () {
-			for (const uuid of Object.keys(that.refs)) {
-				const key = that.refs[uuid].deref()
+			for (const uuid of Object.keys(refs)) {
+				const key = refs[uuid].deref()
 				if (key) yield cb(key)
-				else delete that.refs[uuid]
+				else delete refs[uuid]
 			}
 			return undefined
 		})()
