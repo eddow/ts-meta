@@ -1,6 +1,15 @@
+/**
+ * Uses weak references but still may iterate through them
+ * Note: The behavior is highly dependant on the garbage collector - some entries are perhaps deemed to be collected,
+ * don't resuscitate them
+ */
 export class IterableWeakMap<K extends WeakKey, V> implements Map<K, V> {
 	private uuids = new WeakMap<K, string>()
 	private refs: Record<string, [WeakRef<K>, any]> = {}
+
+	constructor(entries?: Iterable<[K, V]>) {
+		if (entries) for (const [k, v] of entries) this.set(k, v)
+	}
 	private createIterator<I>(cb: (key: K, value: V) => I): MapIterator<I> {
 		const { refs } = this
 		return (function* () {
@@ -64,11 +73,17 @@ export class IterableWeakMap<K extends WeakKey, V> implements Map<K, V> {
 	readonly [Symbol.toStringTag]: string = 'IterableWeakMap'
 }
 
-//function iterableSetLike<K extends WeakKey>(set: Set<K>): IterableWeakSet<K> {
-
+/**
+ * Uses weak references but still may iterate through them
+ * Note: The behavior is highly dependant on the garbage collector - some entries are perhaps deemed to be collected,
+ * don't resuscitate them
+ */
 export class IterableWeakSet<K extends WeakKey> implements Set<K> {
 	private uuids = new WeakMap<K, string>()
 	private refs: Record<string, WeakRef<K>> = {}
+	constructor(entries?: Iterable<K>) {
+		if (entries) for (const k of entries) this.add(k)
+	}
 	private createIterator<I>(cb: (key: K) => I): MapIterator<I> {
 		const { refs } = this
 		return (function* () {

@@ -1,45 +1,16 @@
-class Semaphore<T = any> {
-	public resolve: (value: T | PromiseLike<T>) => void
-	public reject: (reason?: any) => void
-	private promise: Promise<T>
-
-	private createPromise() {
-		let resolve: (value: T | PromiseLike<T>) => void
-		let reject: (reason?: any) => void
-		const promise = new Promise<T>((_resolve, _reject) => {
-			resolve = _resolve
-			reject = _reject
-		})
-		return { resolve: resolve!, reject: reject!, promise }
-	}
-	constructor() {
-		// we have to c/p to avoid "not initialized" error
-		const { resolve, reject, promise } = this.createPromise()
-		this.resolve = resolve
-		this.reject = reject
-		this.promise = promise.then((x) => (this.reinitializePromise(), x))
-	}
-	reinitializePromise() {
-		const { resolve, reject, promise } = this.createPromise()
-		this.resolve = resolve
-		this.reject = reject
-		this.promise = promise.then((x) => (this.reinitializePromise(), x))
-	}
-	then<R>(callback: (x: T) => R): Promise<R> {
-		return this.promise.then(callback)
-	}
-}
+import { PromiseSequence } from './utils'
 
 const garbageCollected = Symbol('garbageCollected')
 
 class Events<T extends NonNullable<object>> {
+	private registered: boolean = false
 	private readonly eventCallbacks: Record<string | symbol, Set<(details: any) => void>> = {}
 	private readonly eventPromises: Record<
 		string | symbol,
-		{ semaphore: Semaphore<any>; refs: number }
+		{ sequence: PromiseSequence<any>; refs: number }
 	> = {}
 	private readonly target: WeakRef<T>
-	public objectCollected = new Semaphore<typeof garbageCollected>()
+	public objectCollected = new PromiseSequence<typeof garbageCollected>()
 
 	constructor(target: T) {
 		this.target = new WeakRef(target)
@@ -49,11 +20,22 @@ class Events<T extends NonNullable<object>> {
 		if (!callbacks) return
 		callbacks.delete(cb)
 		if (!callbacks.size) delete this.eventCallbacks[event]
-		this.removeEmpty()
+		this.unregister()
 	}
-	public removeEmpty() {
-		if (Object.keys(this.eventCallbacks).length + Object.keys(this.eventPromises).length === 0)
+	public register() {
+		if (!this.registered) {
+			eventHolders.set(this.target.deref()!, this)
+			this.registered = true
+		}
+	}
+	public unregister() {
+		if (
+			this.registered &&
+			Object.keys(this.eventCallbacks).length + Object.keys(this.eventPromises).length === 0
+		) {
 			eventHolders.delete(this.assertAlive())
+			this.registered = false
+		}
 	}
 	private assertAlive() {
 		const target = this.target.deref()
@@ -62,10 +44,10 @@ class Events<T extends NonNullable<object>> {
 	}
 	private withPromise<T, R extends AsyncIterator<T> | Promise<T>>(
 		event: string | symbol,
-		callback: (semaphore: Semaphore<T>) => R
+		callback: (sequence: PromiseSequence<T>) => R
 	) {
 		const promised = (this.eventPromises[event] ??= {
-			semaphore: new Semaphore(),
+			sequence: new PromiseSequence(),
 			refs: 0
 		})
 		let allocated = true
@@ -76,15 +58,15 @@ class Events<T extends NonNullable<object>> {
 			promised.refs--
 			if (!promised.refs) {
 				delete this.eventPromises[event]
-				this.removeEmpty()
+				this.unregister()
 			}
 		}
 		try {
-			const rv = callback(promised.semaphore)
+			const rv = callback(promised.sequence)
 			if (rv instanceof Promise) return rv.finally(deallocate)
 			return (async function* () {
 				try {
-					const iterator = <AsyncIterator<T>>callback(promised.semaphore)
+					const iterator = <AsyncIterator<T>>callback(promised.sequence)
 					for await (const value of { [Symbol.asyncIterator]: () => iterator }) yield value
 					return iterator.return?.()
 				} finally {
@@ -101,6 +83,7 @@ class Events<T extends NonNullable<object>> {
 	on<Details>(event: string | symbol): AsyncGenerator<Details>
 
 	on<Details>(event: string | symbol, callback?: (details: Details) => void) {
+		this.register()
 		if (callback) {
 			this.assertAlive()
 			const callbacks = (this.eventCallbacks[event] ??= new Set())
@@ -108,9 +91,9 @@ class Events<T extends NonNullable<object>> {
 			return () => this.removeCallbacks(event, callback)
 		}
 		const { objectCollected } = this
-		return this.withPromise<Details, AsyncGenerator<Details>>(event, async function* (semaphore) {
+		return this.withPromise<Details, AsyncGenerator<Details>>(event, async function* (sequence) {
 			do {
-				const next = await Promise.any([semaphore, objectCollected])
+				const next = await Promise.any([sequence, objectCollected])
 				if (next === garbageCollected) break
 				yield next
 			} while (true)
@@ -120,6 +103,7 @@ class Events<T extends NonNullable<object>> {
 	once<Details>(event: string | symbol, callback: (details: Details) => void): () => void
 	once<Details>(event: string | symbol): Promise<Details>
 	once<Details>(event: string | symbol, callback?: (details: Details) => void) {
+		this.register()
 		if (callback) {
 			const target = this.assertAlive(),
 				once = (details: Details) => {
@@ -129,8 +113,8 @@ class Events<T extends NonNullable<object>> {
 			return this.on(event, once)
 		}
 		return (async () => {
-			return await this.withPromise<Details, Promise<Details>>(event, async function (semaphore) {
-				return await semaphore
+			return await this.withPromise<Details, Promise<Details>>(event, async function (sequence) {
+				return await sequence
 			})
 		})()
 	}
@@ -139,7 +123,7 @@ class Events<T extends NonNullable<object>> {
 			callbacks = this.eventCallbacks[event],
 			promise = this.eventPromises[event]
 		if (callbacks) for (const callback of callbacks) callback.call(target, details)
-		if (promise) promise.semaphore.resolve(details)
+		if (promise) promise.sequence.resolve(details)
 	}
 	off(event: string | symbol, callback: (details: any) => void) {
 		this.assertAlive()
@@ -162,11 +146,7 @@ export function events<T extends object>(target: T) {
 	let holder = eventHolders.get(target)
 	if (!holder) {
 		holder = new Events(target)
-		eventHolders.set(target, holder)
 		eventFinalizationRegistry.register(target, holder)
-		setTimeout(() => {
-			holder!.removeEmpty()
-		})
 	}
 	return holder
 }

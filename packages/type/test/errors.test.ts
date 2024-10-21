@@ -1,27 +1,6 @@
-import {
-	and,
-	AndTypeDefinition,
-	AndTypeErrorDesc,
-	array,
-	ArrayTypeErrorDesc,
-	GivenTypeErrorDesc,
-	typeError,
-	literal,
-	LiteralTypeErrorDesc,
-	object,
-	ObjectTypeErrorDesc,
-	optional,
-	or,
-	OrTypeDefinition,
-	OrTypeErrorDesc,
-	SizeTypeErrorDesc,
-	tuple,
-	never,
-	metaValidation,
-	typed
-} from '../src'
+import { metaValidation, typed } from '../src'
 
-describe('type', () => {
+describe('errors', () => {
 	it('non-inferred field', () => {
 		metaValidation.warn = jest.fn()
 		@typed()
