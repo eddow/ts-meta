@@ -1,5 +1,6 @@
 import { IterableWeakMap } from '@ts-meta/t-weak'
 import Defer, { ContextStack, mapDefault } from './utils'
+import { contentObject, ContentObject, proxyWrapper, TargetProperty } from './proxies'
 
 class ReactivityError extends Error {
 	constructor(message: string) {
@@ -8,91 +9,55 @@ class ReactivityError extends Error {
 	}
 }
 
-type ContentObject = Exclude<Exclude<NonNullable<object>, Date>, RegExp>
-
-function contentObject(x: any): x is ContentObject {
-	return typeof x === 'object' && x !== null && !(x instanceof Date) && !(x instanceof RegExp)
-}
-
-const proxyCache = new WeakMap<any, any>(),
-	parentsList = new WeakMap<object, IterableWeakMap<ContentObject, string | symbol>>()
-function legacy(target: ContentObject) {
-	const legacy = parentsList.get(target) ?? new IterableWeakMap()
-	parentsList.set(target, legacy)
-	return legacy
-}
-
 const watchValueContext = new ContextStack<
-	(target: ContentObject, property: string | symbol) => void
+	(target: ContentObject, propertyKey: PropertyKey) => void
 >()
 
-const reactiveHandler = {
-	get<T extends ContentObject, K extends (string | symbol) & keyof T>(
-		target: T,
-		property: K,
-		receiver: any
-	): T[K] {
-		watchValueContext.current?.(target, property)
-		return Reflect.get(target, property, receiver)
-	},
-
-	set<T extends ContentObject, K extends (string | symbol) & keyof T>(
-		target: T,
-		property: K,
-		value: T[K],
-		receiver: any
-	): boolean {
-		if (!watchValueContext.isEmpty)
-			throw new ReactivityError('Cannot modify values while computing watch values')
-		if (contentObject(value)) {
-			value = reactive(value)
-			legacy(<ContentObject>value).set(target, property)
-		}
-		return Reflect.set(target, property, value, receiver)
-	},
-
-	deleteProperty<T extends ContentObject, K extends (string | symbol) & keyof T>(
-		target: T,
-		property: K
-	): boolean {
-		if (!watchValueContext.isEmpty)
-			throw new ReactivityError('Cannot modify values while computing watch values')
-		if (contentObject(target[property])) legacy(target[property]).delete(target)
-		return Reflect.deleteProperty(target, property)
-	}
-}
-
-function ownEntries<T extends ContentObject, K extends (string | symbol) & keyof T>(
+function ownEntries<T extends ContentObject, K extends PropertyKey & keyof T>(
 	target: T
 ): [K, T[K]][] {
 	return <[K, T[K]][]>Object.entries(target).filter(([k]) => target.hasOwnProperty(k))
 }
-
+const makeReactive = proxyWrapper(
+	{
+		get({ target, propertyKey, value }: TargetProperty) {
+			watchValueContext.current?.(target, propertyKey)
+			return value
+		},
+		set({ value }: TargetProperty) {
+			return contentObject(value) ? reactive(value) : value
+		},
+		modify() {
+			if (!watchValueContext.isEmpty)
+				throw new ReactivityError('Cannot modify values while computing watch values')
+		}
+	},
+	'setFirst'
+)
 export function reactive<T extends ContentObject>(target: T): T {
-	if (proxyCache.has(target)) return proxyCache.get(target)
-	Object.assign(
-		target,
-		Object.fromEntries(
-			ownEntries(target)
-				.filter(([_, v]) => contentObject(v))
-				.map(([k, v]) => [k, reactive(<ContentObject>v)])
+	const rv = makeReactive(target)
+	if (rv !== target)
+		// if a proxy has been created
+		Object.assign(
+			target,
+			Object.fromEntries(
+				ownEntries(target)
+					.filter(([_, v]) => contentObject(v))
+					.map(([k, v]) => [k, reactive(<ContentObject>v)])
+			)
 		)
-	)
-	const rv = new Proxy<T>(target, reactiveHandler)
-	proxyCache.set(target, rv)
-	proxyCache.set(rv, rv)
 	return rv
 }
 
-type ObjectWatchers = Record<string | symbol, Set<Watch<ContentObject[], any[]>>>
+type ObjectWatchers = Record<PropertyKey, Set<Watch<ContentObject[], any[]>>>
 
 const watchList = new WeakMap<ContentObject, ObjectWatchers>()
-function touchProperty(target: ContentObject, property: string | symbol) {
-	const watchers = watchList.get(target)?.[property]
+function touchProperty(target: ContentObject, propertyKey: PropertyKey) {
+	const watchers = watchList.get(target)?.[propertyKey]
 	if (watchers) for (const watcher of watchers) watcher.touchDefer.defer()
 }
 
-class WatchHooks extends IterableWeakMap<ContentObject, Set<string | symbol>> {}
+class WatchHooks extends IterableWeakMap<ContentObject, Set<PropertyKey>> {}
 const watchFinalizationRegistry = new FinalizationRegistry((watch: Watch) => {
 	// Note: when unregister-ing, the engine doesn't reference the watch anymore
 	watch.unregister()
@@ -124,8 +89,8 @@ class Watch<Watched extends ContentObject[] = ContentObject[], Value extends any
 	private computeValue() {
 		const hooks = new WatchHooks(),
 			value = watchValueContext.with(
-				(target, property) => {
-					mapDefault(hooks, target, () => new Set()).add(property)
+				(target, propertyKey) => {
+					mapDefault(hooks, target, () => new Set()).add(propertyKey)
 				},
 				() => this.valueComputer(...(<Watched>this.targets.map((target) => target.deref())))
 			)
@@ -152,9 +117,9 @@ class Watch<Watched extends ContentObject[] = ContentObject[], Value extends any
 	forAllHooks(cb: (value: Set<Watch<ContentObject[], any[]>>) => void) {
 		for (const [target, properties] of this.hooks) {
 			const objectWatchList = mapDefault(watchList, target, () => <ObjectWatchers>{})
-			for (const property of properties) {
-				objectWatchList[property] ??= new Set()
-				cb(objectWatchList[property])
+			for (const propertyKey of properties) {
+				objectWatchList[propertyKey] ??= new Set()
+				cb(objectWatchList[propertyKey])
 			}
 		}
 	}

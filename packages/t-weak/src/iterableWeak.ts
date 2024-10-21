@@ -1,7 +1,6 @@
 /**
  * Uses weak references but still may iterate through them
- * Note: The behavior is highly dependant on the garbage collector - some entries are perhaps deemed to be collected,
- * don't resuscitate them
+ * Note: The behavior is highly dependant on the garbage collector - some entries are perhaps deemed to be collected: don't resuscitate them
  */
 export class IterableWeakMap<K extends WeakKey, V> implements Map<K, V> {
 	private uuids = new WeakMap<K, string>()
@@ -75,8 +74,7 @@ export class IterableWeakMap<K extends WeakKey, V> implements Map<K, V> {
 
 /**
  * Uses weak references but still may iterate through them
- * Note: The behavior is highly dependant on the garbage collector - some entries are perhaps deemed to be collected,
- * don't resuscitate them
+ * Note: The behavior is highly dependant on the garbage collector - some entries are perhaps deemed to be collected: don't resuscitate them
  */
 export class IterableWeakSet<K extends WeakKey> implements Set<K> {
 	private uuids = new WeakMap<K, string>()

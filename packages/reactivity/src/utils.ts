@@ -3,16 +3,16 @@
  * Also, `resolve` and `reject` are exposed
  */
 export class PromiseSequence<T = any> implements Promise<T> {
-	private actualPromise: {
+	private currentPromise: {
 		resolve: (value: T | PromiseLike<T>) => void
 		reject: (reason?: any) => void
 		promise: Promise<T>
 	}
 	resolve(value: T | PromiseLike<T>) {
-		return this.actualPromise.resolve(value)
+		return this.currentPromise.resolve(value)
 	}
 	reject(reason?: any) {
-		return this.actualPromise.reject(reason)
+		return this.currentPromise.reject(reason)
 	}
 
 	private createPromise() {
@@ -22,29 +22,29 @@ export class PromiseSequence<T = any> implements Promise<T> {
 			resolve = _resolve
 			reject = _reject
 		}).then((x) => {
-			this.actualPromise = this.createPromise()
+			this.currentPromise = this.createPromise()
 			return x
 		})
 		return { resolve: resolve!, reject: reject!, promise }
 	}
 	constructor() {
 		// we have to c/p to avoid "not initialized" error
-		this.actualPromise = this.createPromise()
+		this.currentPromise = this.createPromise()
 	}
 	readonly [Symbol.toStringTag]: string = 'PromiseSequence'
 	then<TResult1 = T, TResult2 = never>(
 		onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null,
 		onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null
 	): Promise<TResult1 | TResult2> {
-		return this.actualPromise.promise.then(onfulfilled, onrejected)
+		return this.currentPromise.promise.then(onfulfilled, onrejected)
 	}
 	catch<TResult = never>(
 		onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null | undefined
 	): Promise<T | TResult> {
-		return this.actualPromise.promise.catch(onrejected)
+		return this.currentPromise.promise.catch(onrejected)
 	}
 	finally(onfinally?: (() => void) | null | undefined): Promise<T> {
-		return this.actualPromise.promise.finally(onfinally)
+		return this.currentPromise.promise.finally(onfinally)
 	}
 }
 
