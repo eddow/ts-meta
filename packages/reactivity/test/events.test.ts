@@ -1,7 +1,10 @@
 import { events } from '../src'
 
+function tick(ms: number = 0) {
+	return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 // TODO global.gc when --expose-gc is enabled: find a way to enable it then test
-// TODO once + promise-led events
 it('emits', () => {
 	const target = {},
 		fct = events(target),
@@ -61,9 +64,31 @@ it('once', async () => {
 })
 it('promise', async () => {
 	const target = {},
-		fct = events(target),
-		fn = jest.fn()
-	fct.on('event', fn)
+		fct = events(target)
+	let ctr = 0
+	;(async () => {
+		for await (const evt of fct.on<number>('event')) ctr += evt
+	})()
+	expect(ctr).toBe(0)
 	fct.emit('event', 5)
-	expect(fn).toHaveBeenCalledWith(5)
+	await tick()
+	expect(ctr).toBe(5)
+	fct.emit('event', 2)
+	await tick()
+	expect(ctr).toBe(7)
+})
+it('promise once ', async () => {
+	const target = {},
+		fct = events(target)
+	let ctr = 0
+	;(async () => {
+		ctr = await fct.once<number>('event')
+	})()
+	expect(ctr).toBe(0)
+	fct.emit('event', 5)
+	await tick()
+	expect(ctr).toBe(5)
+	fct.emit('event', 2)
+	await tick()
+	expect(ctr).toBe(5)
 })

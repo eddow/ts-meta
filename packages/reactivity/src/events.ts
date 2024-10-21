@@ -13,16 +13,17 @@ class Semaphore<T = any> {
 		return { resolve: resolve!, reject: reject!, promise }
 	}
 	constructor() {
+		// we have to c/p to avoid "not initialized" error
 		const { resolve, reject, promise } = this.createPromise()
 		this.resolve = resolve
 		this.reject = reject
-		this.promise = promise.then((x) => (this.reinitPromise(), x))
+		this.promise = promise.then((x) => (this.reinitializePromise(), x))
 	}
-	reinitPromise() {
+	reinitializePromise() {
 		const { resolve, reject, promise } = this.createPromise()
 		this.resolve = resolve
 		this.reject = reject
-		this.promise = promise.then((x) => (this.reinitPromise(), x))
+		this.promise = promise.then((x) => (this.reinitializePromise(), x))
 	}
 	then<R>(callback: (x: T) => R): Promise<R> {
 		return this.promise.then(callback)
@@ -32,7 +33,7 @@ class Semaphore<T = any> {
 const garbageCollected = Symbol('garbageCollected')
 
 class Events<T extends NonNullable<object>> {
-	private readonly eventCallbacks: Record<string | symbol, Set<(...args: any[]) => void>> = {}
+	private readonly eventCallbacks: Record<string | symbol, Set<(details: any) => void>> = {}
 	private readonly eventPromises: Record<
 		string | symbol,
 		{ semaphore: Semaphore<any>; refs: number }
@@ -43,12 +44,15 @@ class Events<T extends NonNullable<object>> {
 	constructor(target: T) {
 		this.target = new WeakRef(target)
 	}
-	private removeCallbacks(event: string | symbol, cb: (...args: any[]) => void) {
+	private removeCallbacks(event: string | symbol, cb: (details: any) => void) {
 		const callbacks = this.eventCallbacks[event]
 		if (!callbacks) return
 		callbacks.delete(cb)
 		if (!callbacks.size) delete this.eventCallbacks[event]
-		if (!Object.keys(this.eventCallbacks).length && !Object.keys(this.eventPromises).length)
+		this.removeEmpty()
+	}
+	public removeEmpty() {
+		if (Object.keys(this.eventCallbacks).length + Object.keys(this.eventPromises).length === 0)
 			eventHolders.delete(this.assertAlive())
 	}
 	private assertAlive() {
@@ -56,61 +60,88 @@ class Events<T extends NonNullable<object>> {
 		if (!target) throw new Error('Target is dead')
 		return target
 	}
-	private async *withPromise<T extends any[]>(
+	private withPromise<T, R extends AsyncIterator<T> | Promise<T>>(
 		event: string | symbol,
-		callback: (semaphore: Semaphore<T>) => AsyncIterator<T>
+		callback: (semaphore: Semaphore<T>) => R
 	) {
 		const promised = (this.eventPromises[event] ??= {
 			semaphore: new Semaphore(),
 			refs: 0
 		})
+		let allocated = true
 		promised.refs++
-		try {
-			const iterator = callback(promised.semaphore)
-			for await (const value of { [Symbol.asyncIterator]: () => iterator }) yield value
-			return iterator.return?.()
-		} finally {
+		const deallocate = () => {
+			if (!allocated) return
+			allocated = false
 			promised.refs--
-			if (!promised.refs) delete this.eventPromises[event]
-			if (!Object.keys(this.eventCallbacks).length && !Object.keys(this.eventPromises).length)
-				eventHolders.delete(this.assertAlive())
+			if (!promised.refs) {
+				delete this.eventPromises[event]
+				this.removeEmpty()
+			}
+		}
+		try {
+			const rv = callback(promised.semaphore)
+			if (rv instanceof Promise) return rv.finally(deallocate)
+			return (async function* () {
+				try {
+					const iterator = <AsyncIterator<T>>callback(promised.semaphore)
+					for await (const value of { [Symbol.asyncIterator]: () => iterator }) yield value
+					return iterator.return?.()
+				} finally {
+					deallocate()
+				}
+			})()
+		} catch (e) {
+			deallocate()
+			throw e
 		}
 	}
 
-	on(event: string | symbol, callback: (...args: any[]) => void) {
-		this.assertAlive()
-		const callbacks = (this.eventCallbacks[event] ??= new Set())
-		callbacks.add(callback)
-		return () => this.removeCallbacks(event, callback)
-	}
-	emit(event: string | symbol, ...args: any[]) {
-		const target = this.assertAlive(),
-			callbacks = this.eventCallbacks[event]
-		if (!callbacks) return
-		for (const callback of callbacks) callback.apply(target, args)
+	on<Details>(event: string | symbol, callback: (details: Details) => void): () => void
+	on<Details>(event: string | symbol): AsyncGenerator<Details>
+
+	on<Details>(event: string | symbol, callback?: (details: Details) => void) {
+		if (callback) {
+			this.assertAlive()
+			const callbacks = (this.eventCallbacks[event] ??= new Set())
+			callbacks.add(callback)
+			return () => this.removeCallbacks(event, callback)
+		}
+		const { objectCollected } = this
+		return this.withPromise<Details, AsyncGenerator<Details>>(event, async function* (semaphore) {
+			do {
+				const next = await Promise.any([semaphore, objectCollected])
+				if (next === garbageCollected) break
+				yield next
+			} while (true)
+		})
 	}
 
-	once<Params extends any[] = any[]>(
-		event: string | symbol,
-		callback: (...args: Params) => void
-	): () => void
-	once<Params extends any[] = any[]>(event: string | symbol): Promise<Params>
-	once<Params extends any[] = any[]>(event: string | symbol, callback?: (...args: Params) => void) {
+	once<Details>(event: string | symbol, callback: (details: Details) => void): () => void
+	once<Details>(event: string | symbol): Promise<Details>
+	once<Details>(event: string | symbol, callback?: (details: Details) => void) {
 		if (callback) {
 			const target = this.assertAlive(),
-				once = (...args: Params) => {
-					callback.apply(target, args)
+				once = (details: Details) => {
+					callback.call(target, details)
 					this.off(event, once)
 				}
 			return this.on(event, once)
 		}
 		return (async () => {
-			return await this.withPromise<Params>(event, async function* (semaphore) {
+			return await this.withPromise<Details, Promise<Details>>(event, async function (semaphore) {
 				return await semaphore
 			})
 		})()
 	}
-	off(event: string | symbol, callback: (...args: any[]) => void) {
+	emit(event: string | symbol, details: any) {
+		const target = this.assertAlive(),
+			callbacks = this.eventCallbacks[event],
+			promise = this.eventPromises[event]
+		if (callbacks) for (const callback of callbacks) callback.call(target, details)
+		if (promise) promise.semaphore.resolve(details)
+	}
+	off(event: string | symbol, callback: (details: any) => void) {
 		this.assertAlive()
 		const callbacks = this.eventCallbacks[event]
 		if (!callbacks) return
@@ -130,8 +161,12 @@ const eventHolders = new WeakMap<object, Events<object>>(),
 export function events<T extends object>(target: T) {
 	let holder = eventHolders.get(target)
 	if (!holder) {
-		eventHolders.set(target, (holder = new Events(target)))
+		holder = new Events(target)
+		eventHolders.set(target, holder)
 		eventFinalizationRegistry.register(target, holder)
+		setTimeout(() => {
+			holder!.removeEmpty()
+		})
 	}
 	return holder
 }

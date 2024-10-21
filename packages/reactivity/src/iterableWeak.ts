@@ -134,7 +134,6 @@ export class IterableWeakSet<K extends WeakKey> implements Set<K> {
 				}
 			},
 			that = this
-
 		return new Set(
 			(function* () {
 				yield* that
