@@ -1,5 +1,7 @@
-import { any, array, NoParamConstructor, tuple, TypeDefinition, typeError } from './type'
 import 'reflect-metadata'
+import { ReflectionKey } from '~/types'
+import { any, array, NoParamConstructor, tuple, TypeDefinition, typeError } from './types'
+import { devTools } from '@ts-meta/utilities'
 
 /**
  * At least with ts-jest, a field initialized in the constructor will be both an accessor (get/set) in the prototype
@@ -21,15 +23,6 @@ class ValidationError extends Error {
 		this.name = 'ValidationError'
 	}
 }
-
-/**
- * Override default behaviors here
- */
-export const metaValidation = {
-	warn(...args: any[]) {
-		console.warn(...args)
-	}
-}
 // TODO: watched array/object ?
 export interface ValidatedFunction {
 	argumentTypes: TypeDefinition[]
@@ -40,7 +33,7 @@ export interface ValidatedFunction {
 function metadata<DataType extends object>(
 	mdKey: string,
 	target: any,
-	propertyKey?: string | symbol
+	propertyKey?: ReflectionKey
 ): Partial<DataType> {
 	let md: Partial<DataType> =
 		propertyKey !== undefined
@@ -56,7 +49,7 @@ function metadata<DataType extends object>(
 function validateParameters<T extends object = any>(
 	type: TypeDefinition,
 	target: T,
-	propertyKey: keyof T & (string | symbol),
+	propertyKey: keyof T & ReflectionKey,
 	index: number
 ): void {
 	if (!type) {
@@ -65,13 +58,13 @@ function validateParameters<T extends object = any>(
 		switch (type) {
 			case Object:
 				type = any
-				metaValidation.warn(
+				devTools.warn(
 					`Type for parameter ${index} of method ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred. \`any\` used.`
 				)
 				break
 			case Array:
 				type = array(any)
-				metaValidation.warn(`Type of array elements for parameter ${index} of method ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
+				devTools.warn(`Type of array elements for parameter ${index} of method ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
 	Use « @typed(Array) » to assume « any[] ».`)
 				break
 		}
@@ -84,7 +77,7 @@ function validateParameters<T extends object = any>(
 function validateField<T extends object = any>(
 	type: TypeDefinition,
 	target: T,
-	propertyKey: keyof T & (string | symbol)
+	propertyKey: ReflectionKey & keyof T
 ): void {
 	if (!type) {
 		// Infer type from the metadata
@@ -92,13 +85,13 @@ function validateField<T extends object = any>(
 		switch (type) {
 			case Object:
 				type = any
-				metaValidation.warn(
+				devTools.warn(
 					`Type for field ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred. \`any\` used.`
 				)
 				break
 			case Array:
 				type = array(any)
-				metaValidation.warn(`Type of array elements for property ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
+				devTools.warn(`Type of array elements for property ${String(propertyKey)} in ${(<T>target).constructor.name} cannot be inferred.
 	Use « @typed(Array) » to assume « any[] ».`)
 				break
 		}
@@ -120,7 +113,7 @@ function validateField<T extends object = any>(
 function validateMethod<T extends object = any>(
 	type: TypeDefinition,
 	target: T,
-	propertyKey: keyof T & (string | symbol),
+	propertyKey: keyof T & ReflectionKey,
 	descriptor: PropertyDescriptor
 ): PropertyDescriptor {
 	const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
@@ -132,7 +125,7 @@ function validateMethod<T extends object = any>(
 	fct.argumentTypes = Reflect.getMetadata(
 		'design:paramtypes',
 		<T>target,
-		<string | symbol>propertyKey
+		<ReflectionKey>propertyKey
 	).map((paramType: NoParamConstructor, index: number) => {
 		if (fct.argumentTypes![index]) return fct.argumentTypes![index]
 		// TODO validate and warn
@@ -179,12 +172,12 @@ export function typed<T extends object = any>(
 	type?: TypeDefinition
 ): (
 	target: T | NoParamConstructor,
-	propertyKey?: keyof T & (string | symbol),
+	propertyKey?: keyof T & ReflectionKey,
 	index?: number | PropertyDescriptor
 ) => any {
 	return function typedDecoration(
 		target: T | NoParamConstructor,
-		propertyKey?: keyof T & (string | symbol),
+		propertyKey?: keyof T & ReflectionKey,
 		index?: number | PropertyDescriptor
 	): void | PropertyDescriptor | NoParamConstructor<T> {
 		return propertyKey === undefined
@@ -199,7 +192,7 @@ export function typed<T extends object = any>(
 
 export function optionals<T extends object = any>(
 	target: T,
-	propertyKey: keyof T & (string | symbol),
+	propertyKey: keyof T & ReflectionKey,
 	index: number
 ) {
 	const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
@@ -211,15 +204,11 @@ export function optionals<T extends object = any>(
 }
 
 export function rest<T extends object = any>(type: TypeDefinition) {
-	return function restDecoration(
-		target: T,
-		propertyKey: keyof T & (string | symbol),
-		index: number
-	) {
+	return function restDecoration(target: T, propertyKey: keyof T & ReflectionKey, index: number) {
 		const fct = metadata<ValidatedFunction>('function:descriptor', <T>target, propertyKey)
 		if (
 			index !==
-			Reflect.getMetadata('design:paramtypes', <T>target, <string | symbol>propertyKey).length - 1
+			Reflect.getMetadata('design:paramtypes', <T>target, propertyKey as ReflectionKey).length - 1
 		)
 			throw new ValidationError(
 				`@rest can only be used as last argument of a method. Here, at argument ${index}.`

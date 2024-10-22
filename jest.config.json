@@ -7,5 +7,6 @@
 	"moduleNameMapper": {
 		"^@ts-meta/(.*)$": "<rootDir>/packages/$1/src"
 	},
+	"testMatch": ["**/*.test.(js|jsx|ts|tsx)"],
 	"coverageReporters": ["lcov"]
 }

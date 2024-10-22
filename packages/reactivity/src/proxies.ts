@@ -48,7 +48,7 @@ interface ProxyHandler<Obj extends ContentObject> {
 	 * @param target Object whose property is being deleted
 	 * @param property Name of the property being deleted
 	 */
-	delete?<Value extends ValueOf<Obj>>(deletion: TargetProperty<Obj, Value>): boolean
+	delete?<Value extends ValueOf<Obj>>(deletion: TargetProperty<Obj, Value>): void
 }
 
 type OrderedProxyHandlers<Obj extends ContentObject = ContentObject> = {
@@ -131,7 +131,7 @@ const policyPositions = {
 	setFirst: 'setFirst',
 	getLast: 'setFirst',
 	any: 'any'
-} as Record<string, keyof OrderedProxyHandlers>
+} as const
 
 /**
  *
@@ -143,23 +143,62 @@ export function proxyWrapper<Obj extends ContentObject = ContentObject>(
 	proxyHandler: ProxyHandler<Obj>,
 	policy: keyof typeof policyPositions = 'any'
 ) {
-	return function <T extends ContentObject>(target: T): T {
-		let proxyDesc = proxyCache.get(target)
-		if (!proxyDesc) {
-			const handlers = {
-				...{ setFirst: [], getFirst: [], any: [] },
-				[policyPositions[policy]]: [proxyHandler]
+	return {
+		/**
+		 * Get the wrapped version of the target - whether the target is already wrapped, has already been wrapped or not
+		 * @param target
+		 * @returns
+		 */
+		be<T extends Obj>(target: T): T {
+			let proxyDesc = proxyCache.get(target)
+			if (!proxyDesc) {
+				const handlers = {
+					...{ setFirst: [], getFirst: [], any: [] },
+					[policyPositions[policy]]: [proxyHandler]
+				}
+				proxyDesc = {
+					proxy: new WeakRef(new Proxy<T>(target, reactiveHandler<T>(handlers))),
+					handlers
+				}
+				proxyCache.set(target, proxyDesc)
+				proxyCache.set(proxyDesc, proxyDesc)
+			} else if (!proxyDesc.handlers[policyPositions[policy]].includes(proxyHandler)) {
+				proxyDesc.handlers[policyPositions[policy]].push(proxyHandler)
 			}
-			proxyDesc = {
-				proxy: new WeakRef(new Proxy<T>(target, reactiveHandler<T>(handlers))),
-				handlers
-			}
-			proxyCache.set(target, proxyDesc)
-			proxyCache.set(proxyDesc, proxyDesc)
-		} else if (!proxyDesc.handlers[policyPositions[policy]].includes(proxyHandler)) {
-			const policyFunction = policyPositions[policy]
-			proxyDesc.handlers[policyPositions[policy]].push(proxyHandler)
+			return proxyDesc.proxy.deref()! as T
+		},
+		is(target: Obj): boolean {
+			const proxyDesc = proxyCache.get(target)
+			return (
+				!!proxyDesc &&
+				Object.values(proxyDesc.handlers).some((handlers) => handlers.includes(proxyHandler))
+			)
 		}
-		return proxyDesc.proxy.deref()! as T
 	}
+}
+
+// We consider a prototype overriding is always for the same functions. An object is not an Array *and* a Set
+const overridden = new WeakMap<any, any>()
+/**
+ *  `target.__proto__` becomes `overriden` where `overridden` contains all the `methods`
+ *	and `overridden.__proto__` is the original `target.__proto__`
+ * @param target Modified object
+ * @param methods List of methods to create the prototype from
+ */
+function overridePrototype(target: any, native: any, methods: string[]) {
+	const prototype = Object.getPrototypeOf(target)
+	if (!overridden.has(prototype)) {
+		const descriptors: PropertyDescriptorMap = {},
+			unWeak = /(?:Weak(.*))|.*/.exec(native.name)!,
+			prefix = (unWeak[1] || unWeak[0]).toLowerCase()
+		for (const method of methods)
+			descriptors['mutate' + method[0].toUpperCase() + method.slice(1)] = {
+				value: function (...args: any[]) {
+					//;(deltas.get(target) as any)[method](...args)
+					return native.prototype[method].apply(this, args)
+				}
+			}
+		overridden.set(prototype, Object.create(prototype, descriptors))
+	}
+	Object.setPrototypeOf(target, overridden.get(prototype))
 }

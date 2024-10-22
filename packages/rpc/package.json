@@ -40,6 +40,6 @@
 		"@rollup/rollup-win32-x64-msvc": "^4.18.0"
 	},
 	"dependencies": {
-		"@ts-meta/type": "^1.0.0"
+		"@ts-meta/utilities": "^1.0.0"
 	}
 }

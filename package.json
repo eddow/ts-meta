@@ -8,8 +8,8 @@
 		"url": "git+https://github.com/eddow/ts-meta.git"
 	},
 	"scripts": {
-		"test": "jest",
-		"test:coverage": "jest --coverage",
+		"test": "node --expose-gc node_modules/.bin/jest",
+		"test:coverage": "node --expose-gc node_modules/.bin/jest --coverage",
 		"prettier": "prettier --write ."
 	},
 	"workspaces": [

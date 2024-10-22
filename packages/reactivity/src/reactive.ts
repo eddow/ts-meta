@@ -1,5 +1,5 @@
 import { IterableWeakMap } from '@ts-meta/t-weak'
-import Defer, { ContextStack, mapDefault } from './utils'
+import { Defer, ContextStack, mapDefault } from '@ts-meta/utilities'
 import { contentObject, ContentObject, proxyWrapper, TargetProperty } from './proxies'
 
 class ReactivityError extends Error {
@@ -18,7 +18,7 @@ function ownEntries<T extends ContentObject, K extends PropertyKey & keyof T>(
 ): [K, T[K]][] {
 	return <[K, T[K]][]>Object.entries(target).filter(([k]) => target.hasOwnProperty(k))
 }
-const makeReactive = proxyWrapper(
+const reactivity = proxyWrapper(
 	{
 		get({ target, propertyKey, value }: TargetProperty) {
 			watchValueContext.current?.(target, propertyKey)
@@ -27,16 +27,18 @@ const makeReactive = proxyWrapper(
 		set({ value }: TargetProperty) {
 			return contentObject(value) ? reactive(value) : value
 		},
-		modify() {
+		modify({ target, propertyKey }: TargetProperty) {
 			if (!watchValueContext.isEmpty)
 				throw new ReactivityError('Cannot modify values while computing watch values')
+			touchObject(target, propertyKey)
 		}
 	},
 	'setFirst'
 )
 export function reactive<T extends ContentObject>(target: T): T {
-	const rv = makeReactive(target)
-	if (rv !== target)
+	const wasReactive = reactivity.is(target),
+		rv = reactivity.be(target)
+	if (!wasReactive)
 		// if a proxy has been created
 		Object.assign(
 			target,
@@ -50,11 +52,23 @@ export function reactive<T extends ContentObject>(target: T): T {
 }
 
 type ObjectWatchers = Record<PropertyKey, Set<Watch<ContentObject[], any[]>>>
-
+// TODO: Should be able to watch the whole object (ex. array.indexOf())
+// TODO: Force scope-less functions
+// TODO: optional deep comparison
 const watchList = new WeakMap<ContentObject, ObjectWatchers>()
-function touchProperty(target: ContentObject, propertyKey: PropertyKey) {
-	const watchers = watchList.get(target)?.[propertyKey]
-	if (watchers) for (const watcher of watchers) watcher.touchDefer.defer()
+function touchObject(target: ContentObject, propertyKey?: PropertyKey) {
+	const objectWatchers = watchList.get(target)
+	if (!objectWatchers) return
+	const watchers =
+		propertyKey !== undefined
+			? // Touch only one property
+				objectWatchers[propertyKey]
+			: // Touch all properties
+				Object.values(objectWatchers).reduce(
+					(previous, current) => previous.union(current),
+					new Set<Watch<ContentObject[], any[]>>()
+				)
+	for (const watcher of watchers) watcher.touchDefer.defer()
 }
 
 class WatchHooks extends IterableWeakMap<ContentObject, Set<PropertyKey>> {}
@@ -70,7 +84,7 @@ class Watch<Watched extends ContentObject[] = ContentObject[], Value extends any
 
 	constructor(
 		public readonly valueComputer: (...targets: Watched) => Value,
-		public readonly callback: (value: Value, oldValue: Value) => void,
+		public readonly callback: (value: Value, oldValue: Value, ...targets: Watched) => void,
 		...targets: Watched
 	) {
 		this.touchDefer = new Defer(() => this.touched())
@@ -96,19 +110,27 @@ class Watch<Watched extends ContentObject[] = ContentObject[], Value extends any
 			)
 		return { hooks, value }
 	}
+	// Should be deferred: actually calls the callback if the computed value is not exactly the same
 	private touched() {
 		this.unregister()
 		const { hooks, value } = this.computeValue()
 		this.hooks = hooks
-		if (value !== this.oldValue) this.callback(value, this.oldValue)
+		if (value !== this.oldValue)
+			this.callback(
+				value,
+				this.oldValue,
+				...(<Watched>this.targets.map((target) => target.deref()))
+			)
 		this.oldValue = value
 		this.register()
 	}
+	// Add all local hooks to the global watch list
 	register() {
 		this.forAllHooks((watchers: Set<Watch<ContentObject[], any[]>>) =>
 			watchers.add(this as unknown as Watch<object[], any[]>)
 		)
 	}
+	// Remove all local hooks to the global watch list
 	unregister() {
 		this.forAllHooks((watchers: Set<Watch<ContentObject[], any[]>>) =>
 			watchers.delete(this as unknown as Watch<ContentObject[], any[]>)
@@ -129,8 +151,16 @@ class Watch<Watched extends ContentObject[] = ContentObject[], Value extends any
 	}
 }
 
-export function watch<Watched extends ContentObject, Value>(
-	value: (target: Watched) => Value,
-	callback: (value: Value) => void,
-	...targets: Watched[]
-) {}
+/* TODO: target becomes the first argument :
+- reactive: weakRef to it
+- pure object/array: weakRef to its components, make it an argument
+*/
+export function watch<Watched extends ContentObject[], Value>(
+	value: (...target: Watched) => Value,
+	callback: (value: Value, oldValue: Value, ...targets: Watched) => void,
+	...targets: Watched
+) {
+	const watch = new Watch(value, callback, ...targets)
+	watch.register()
+	return watch
+}

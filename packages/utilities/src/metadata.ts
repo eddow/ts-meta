@@ -1,17 +1,10 @@
 import 'reflect-metadata'
-
-export type Constructor<Class extends object = any, Params extends any[] = any[]> = new (
-	...args: Params
-) => Class
-
-export type PropertiesOf<T> = {
-	[K in keyof T as T[K] extends Function ? never : K]: T[K]
-}
+import { ReflectionKey } from '../../types'
 
 export function metadata<DataType extends object | any[]>(
 	mdKey: string,
 	target: any,
-	propertyKey: string | symbol | DataType,
+	ReflectionKey: ReflectionKey | DataType,
 	defaultValue?: DataType
 ): Partial<DataType>
 export function metadata<DataType extends object | any[]>(
@@ -22,19 +15,19 @@ export function metadata<DataType extends object | any[]>(
 export function metadata<DataType extends object | any[]>(
 	mdKey: string,
 	target: any,
-	propertyKey?: string | symbol | DataType,
+	ReflectionKey?: ReflectionKey | DataType,
 	defaultValue?: DataType
 ): Partial<DataType> {
-	if (typeof propertyKey === 'object') {
-		defaultValue = propertyKey
-		propertyKey = undefined
+	if (typeof ReflectionKey === 'object') {
+		defaultValue = ReflectionKey
+		ReflectionKey = undefined
 	}
 	let md: Partial<DataType> =
-		propertyKey !== undefined
-			? Reflect.getMetadata(mdKey, target, propertyKey)
+		ReflectionKey !== undefined
+			? Reflect.getMetadata(mdKey, target, ReflectionKey)
 			: Reflect.getMetadata(mdKey, target)
 	if (!md) {
-		if (propertyKey !== undefined) Reflect.defineMetadata(mdKey, (md = {}), target, propertyKey)
+		if (ReflectionKey !== undefined) Reflect.defineMetadata(mdKey, (md = {}), target, ReflectionKey)
 		else Reflect.defineMetadata(mdKey, (md = {}), target)
 	}
 	return md
