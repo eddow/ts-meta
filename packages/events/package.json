@@ -1,0 +1,46 @@
+{
+	"name": "@ts-meta/events",
+	"version": "1.0.0",
+	"description": "Global events management",
+	"main": "src/index.js",
+	"type": "module",
+	"scripts": {
+		"test": "node --expose-gc node_modules/.bin/jest",
+		"test:coverage": "node --expose-gc node_modules/.bin/jest --coverage",
+		"prettier": "prettier --write .",
+		"build": "rollup -c",
+		"build-umd": "rollup -c rollup.umd.js --watch",
+		"build-extract": "rollup -c rollup.extract.js"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/eddow/ts-meta.git"
+	},
+	"author": "fmdm",
+	"license": "ISC",
+	"devDependencies": {
+		"@rollup/plugin-commonjs": "^25.0.7",
+		"@rollup/plugin-node-resolve": "^15.2.3",
+		"@rollup/plugin-terser": "^0.4.4",
+		"@types/command-line-args": "^5.2.3",
+		"@types/jest": "^29.5.12",
+		"eslint": "^9.1.1",
+		"jest": "^29.7.0",
+		"prettier": "^3.2.5",
+		"rollup": "^4.18.0",
+		"rollup-plugin-dts": "^6.1.0",
+		"rollup-plugin-typescript2": "^0.36.0",
+		"ts-jest": "^29.1.2",
+		"tslib": "^2.6.2",
+		"tsx": "^4.7.3",
+		"typescript": "^5.6.3"
+	},
+	"optionalDependencies": {
+		"@rollup/rollup-linux-x64-gnu": "^4.18.0",
+		"@rollup/rollup-win32-x64-msvc": "^4.18.0"
+	},
+	"dependencies": {
+		"@ts-meta/t-weak": "^1.0.0",
+		"@ts-meta/utilities": "^1.0.0"
+	}
+}

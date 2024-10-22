@@ -7,7 +7,7 @@ function tick(ms: number = 0) {
 
 const gc = global.gc
 
-const { on, emits, listener } = decorators()
+const { on, emit, listener } = decorators()
 
 describe('functions', () => {
 	it('emits', () => {
@@ -144,9 +144,9 @@ describe('decorators', () => {
 		})
 		class Test {
 			ctr = 0
-			@emits('event1') emitter(n: number) {}
-			@emits() event2(n: number) {}
-			@emits event3(n: number) {}
+			@emit('event1') emitter(n: number) {}
+			@emit() event2(n: number) {}
+			@emit event3(n: number) {}
 		}
 		const test = new Test()
 		test.emitter(1)
@@ -261,7 +261,7 @@ function TypeScriptCheck() {
 	evt.emit('click', { x: 5, y: 6, button: 'X' })
 	// @ts-expect-error
 	evt.on('click', ({ d }) => {})
-	const { on, emits, listener } = decorators<TSTestEventsDetails>()
+	const { on, emit, listener } = decorators<TSTestEventsDetails>()
 
 	// Should be valid
 	@listener({
@@ -278,9 +278,16 @@ function TypeScriptCheck() {
 		@on protected beep() {}
 		// We can ignore the detail
 		@on message() {}
+		@emit('message')
+		emitMessage2(msg: TSTestEventsDetails['message']) {}
 	}
 
 	class TW2 {
+		@on() click({ x, y, button }: TSTestEventsDetails['click']) {}
+		@on() beep() {}
+	}
+
+	class TW3 {
 		@on() click({ x, y, button }: TSTestEventsDetails['click']) {}
 		@on() beep() {}
 	}
@@ -299,5 +306,9 @@ function TypeScriptCheck() {
 		// @ts-expect-error
 		@on
 		beep(times: number) {}
+
+		// @ts-expect-error
+		@emit('message')
+		emitMessage({ x, y, button }: TSTestEventsDetails['click']) {}
 	}
 }
