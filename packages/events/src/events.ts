@@ -17,6 +17,7 @@ class Events<EventDetails extends EventDetailList = EventDetailList> {
 		{ sequence: PromiseSequence<any>; refs: number }
 	> = {}
 	private readonly target: WeakRef<any>
+	// Resolved when `target` is garbage collected. Public as it is accessed by the FinalizationRegistry
 	public objectCollected = new PromiseSequence<typeof garbageCollected>()
 
 	constructor(target: NonNullable<object>) {
@@ -181,6 +182,12 @@ const eventHolders = new WeakMap<object, Events<object>>(),
 		events.objectCollected.resolve(garbageCollected)
 	})
 
+/**
+ *
+ * @template EventDetails List of events and the type of the detail given
+ * @param target Object the events are attached to
+ * @returns The events interaction object
+ */
 export function events<EventDetails extends EventDetailList = EventDetailList>(
 	target: NonNullable<object>
 ) {

@@ -2,6 +2,8 @@
 
 Centralized event management: objects who are concerned by these events do not even have to be aware of this happening.
 
+Each event has one (type) argument.
+
 ## Why ?
 
 There are already so many. This one implements:
@@ -20,6 +22,8 @@ import { events } from `@ts-meta/reactivity`
 events(myObject).emit('message', "Hi!")
 events(yourObject).on('click', ({x, y})=> { ... })
 ```
+
+Note that here, if they were not made aware of events, `myObject` and `yourObject` had no indication something happened, though all the events could be emitted/caught.
 
 #### Type checking
 

@@ -1,12 +1,25 @@
 import { IterableWeakMap } from '@ts-meta/t-weak'
 import { Defer, ContextStack, mapDefault } from '@ts-meta/utilities'
-import { contentObject, ContentObject, proxyWrapper, TargetProperty } from './proxies'
+import { proxyWrapper } from './proxies'
+import { contentObject, ContentObject, TargetProperty } from './types'
 
 class ReactivityError extends Error {
 	constructor(message: string) {
 		super(message)
 		this.name = 'ReactivityError'
 	}
+}
+function customClone(value: any, cb: (value: any) => any) {
+	if (!value || typeof value !== 'object') return value
+	const clone = Object.create(Object.getPrototypeOf(value))
+	for (const [key, val] of ownEntries(value)) clone[key] = cb(val)
+	return clone
+}
+function weaken(value: any) {
+	return reactivity.is(value) ? new WeakRef(value) : customClone(value, weaken)
+}
+function toughen(value: any) {
+	return value instanceof WeakRef ? value.deref() : customClone(value, toughen)
 }
 
 const watchValueContext = new ContextStack<
@@ -42,6 +55,7 @@ export function reactive<T extends ContentObject>(target: T): T {
 		// if a proxy has been created
 		Object.assign(
 			target,
+			//Make all props reactive recursively
 			Object.fromEntries(
 				ownEntries(target)
 					.filter(([_, v]) => contentObject(v))
@@ -53,7 +67,7 @@ export function reactive<T extends ContentObject>(target: T): T {
 
 type ObjectWatchers = Record<PropertyKey, Set<Watch<ContentObject[], any[]>>>
 // TODO: Should be able to watch the whole object (ex. array.indexOf())
-// TODO: Force scope-less functions
+// TODO: Force scope-less value functions
 // TODO: optional deep comparison
 const watchList = new WeakMap<ContentObject, ObjectWatchers>()
 function touchObject(target: ContentObject, propertyKey?: PropertyKey) {
