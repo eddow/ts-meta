@@ -20,7 +20,7 @@ export type TypeDefinition =
 	| ObjectDefinition
 	| TypeDefinition[]
 
-//#region Errors
+// #region Errors
 
 export abstract class TypeErrorDesc<TD extends TypeDefinition = TypeDefinition> extends Error {
 	constructor(
@@ -76,13 +76,13 @@ export class ObjectTypeErrorDesc extends SubTypeErrorDesc<string> {}
 
 type TypeError = TypeErrorDesc | undefined
 
-//#endregion
+// #endregion
 
 abstract class ComplexTypeDefinition {
 	abstract check(value: any): TypeError
 }
 
-//#region Hard coded
+// #region Hard coded
 
 export class HardCodedTypeDefinition extends ComplexTypeDefinition {
 	constructor(
@@ -99,8 +99,8 @@ export const any = new HardCodedTypeDefinition('any', () => undefined),
 		(value: any): TypeError => new GivenTypeErrorDesc('Unexpected value', value, never)
 	)
 
-//#endregion
-//#region Complex types
+// #endregion
+// #region Complex types
 
 export class OrTypeDefinition extends ComplexTypeDefinition {
 	constructor(public readonly alternatives: ComplexTypeDefinition[]) {
@@ -366,8 +366,8 @@ const primitiveTypeDefinition = new Map<NoParamConstructor, PrimitiveTypeDefinit
 	[String, PrimitiveTypeDefinition.string],
 	[Boolean, PrimitiveTypeDefinition.boolean]
 ])
-//#endregion
-//#region factories
+// #endregion
+// #region factories
 
 export function or(...alternatives: TypeDefinition[]): ComplexTypeDefinition {
 	const rv = new OrTypeDefinition(alternatives.map(typeShortcut))
@@ -416,8 +416,8 @@ export function instance(type: NoParamConstructor): InstanceTypeDefinition {
 	return new InstanceTypeDefinition(type)
 }
 
-//#endregion
-//#region helpers
+// #endregion
+// #region helpers
 
 export function optional(value: any): TypeDefinition {
 	return or(value, undefined)
@@ -465,11 +465,11 @@ function typeShortcut(type: TypeDefinition): ComplexTypeDefinition {
 	throw new Error(`Unknown type: ${typeDescription(type)}`)
 }
 
-//#endregion
-//#region engine
+// #endregion
+// #region engine
 
 export function typeError(value: any, definition: TypeDefinition): TypeError {
 	return typeShortcut(definition).check(value)
 }
 
-//#endregion
+// #endregion

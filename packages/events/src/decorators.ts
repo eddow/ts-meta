@@ -1,4 +1,4 @@
-import { devTools, metadata, PromiseSequence, TargetIsDeadError } from '@ts-meta/utilities'
+import { devTools, metadata } from '@ts-meta/utilities'
 import { Constructor, ReflectionKey } from '~/types'
 import { DetailedFunctions, EventCB, EventDecorator, EventDetailList } from './types'
 import { events } from './events'

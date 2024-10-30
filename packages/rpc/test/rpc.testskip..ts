@@ -1,13 +1,13 @@
 import { sided, Side } from '../src'
 import { PropertiesOf } from '../src/utils'
 
-//#region Interface toward fake websocket
+// #region Interface toward fake websocket
 
 const client = new Side<'client'>('client'),
 	server = new Side<'server'>('server')
 
-//#endregion
-//#region common
+// #endregion
+// #region common
 
 class UserInterface {
 	readonly id: number = 0
@@ -27,8 +27,8 @@ class UserListInterface {
 	}
 }
 
-//#endregion
-//#region server
+// #endregion
+// #region server
 
 class UserServer extends server.implement(UserInterface) {}
 
@@ -44,12 +44,12 @@ const uls = new UserListServer()
 let us = uls.create('test')
 let up = us.update({ name: 'test2' })
 
-//#endregion
-//#region client
+// #endregion
+// #region client
 
 //const ClientUserList = transferable.client(UserListInterface)
 
-//#endregion
+// #endregion
 const rpcGlobals = {
 	users: UserListInterface
 }

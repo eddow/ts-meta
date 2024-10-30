@@ -5,6 +5,10 @@ const fr = new FinalizationRegistry<() => void>((f) => f())
  */
 export class Destroyable {
 	private isAlive = true
+	/**
+	 *
+	 * @param destructor The function to call after object destruction. The object SHOULD NOT BE USED in the scope of the destructor or it would never be destroyed automatically
+	 */
 	constructor(private readonly destructor: () => void) {
 		fr.register(this, destructor, this)
 	}

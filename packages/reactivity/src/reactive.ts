@@ -1,7 +1,7 @@
 import { IterableWeakMap } from '@ts-meta/t-weak'
 import { Defer, ContextStack, mapDefault } from '@ts-meta/utilities'
-import { proxyWrapper } from './proxies'
-import { contentObject, ContentObject, TargetProperty } from './types'
+import { proxyWrapper } from './proxies/proxies'
+import { contentObject, ContentObject, PropertyTransaction, Transaction } from './types'
 
 class ReactivityError extends Error {
 	constructor(message: string) {
@@ -9,6 +9,7 @@ class ReactivityError extends Error {
 		this.name = 'ReactivityError'
 	}
 }
+
 function customClone(value: any, cb: (value: any) => any) {
 	if (!value || typeof value !== 'object') return value
 	const clone = Object.create(Object.getPrototypeOf(value))
@@ -33,17 +34,21 @@ function ownEntries<T extends ContentObject, K extends PropertyKey & keyof T>(
 }
 const reactivity = proxyWrapper(
 	{
-		get({ target, propertyKey, value }: TargetProperty) {
+		get({ target, propertyKey, value }: PropertyTransaction) {
 			watchValueContext.current?.(target, propertyKey)
 			return value
 		},
-		set({ value }: TargetProperty) {
+		set({ propertyKey, value }: PropertyTransaction) {
+			console.log('set', propertyKey)
 			return contentObject(value) ? reactive(value) : value
 		},
-		modify({ target, propertyKey }: TargetProperty) {
+		modify({ target, propertyKey }: PropertyTransaction) {
 			if (!watchValueContext.isEmpty)
 				throw new ReactivityError('Cannot modify values while computing watch values')
 			touchObject(target, propertyKey)
+		},
+		delete({ propertyKey }: PropertyTransaction) {
+			console.log('delete', propertyKey)
 		}
 	},
 	'setFirst'
@@ -66,9 +71,12 @@ export function reactive<T extends ContentObject>(target: T): T {
 }
 
 type ObjectWatchers = Record<PropertyKey, Set<Watch<ContentObject[], any[]>>>
+// TODO: Content objects can be dates now
 // TODO: Should be able to watch the whole object (ex. array.indexOf())
 // TODO: Force scope-less value functions
 // TODO: optional deep comparison
+// TODO: touch parent list ??? (perhaps try first without)
+// TODO: store all the modifications and make one and only one defer
 const watchList = new WeakMap<ContentObject, ObjectWatchers>()
 function touchObject(target: ContentObject, propertyKey?: PropertyKey) {
 	const objectWatchers = watchList.get(target)
