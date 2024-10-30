@@ -1,6 +1,15 @@
 import { Constructor } from '~/types'
 import { ArrayIndexRange, ContentObject, ProxyHandlers } from '../types'
-import { aIRangeSE, aIRangeSL, chainGetHandlers, chainSetHandlers, tArray, tProp } from './utils'
+import {
+	aIRangeSE,
+	aIRangeSL,
+	chainGetHandlers,
+	chainSetHandlers,
+	tArray,
+	tMap,
+	tProp,
+	tSet
+} from './utils'
 import { array } from '~/type/src'
 // TODO Take also ALL the reading operations. Array.indexOf has to be caught to say we listen to the whole array
 //    ... Oh ... and Array.length too ...
@@ -55,6 +64,34 @@ function wholeArrayConsultation(
 	chainGetHandlers(handlers, tArray(target), 'arraySlice')
 	return Reflect.apply(native, target, args)
 }
+function wholeSetConsultation(
+	this: ProxyHandlers<any>,
+	native: (...args: any) => any,
+	...args: any[]
+) {
+	const { target, handlers } = this
+	chainGetHandlers(handlers, tSet(target), 'setBrowse')
+	return Reflect.apply(native, target, args)
+}
+function twoSetConsultation(
+	this: ProxyHandlers<any>,
+	native: (...args: any) => any,
+	other: Set<any>
+) {
+	const { target, handlers } = this
+	chainGetHandlers(handlers, tSet(target), 'setBrowse')
+	chainGetHandlers(handlers, tSet(other), 'setBrowse')
+	return Reflect.apply(native, target, [other])
+}
+function wholeMapConsultation(
+	this: ProxyHandlers<any>,
+	native: (...args: any) => any,
+	...args: any[]
+) {
+	const { target, handlers } = this
+	chainGetHandlers(handlers, tSet(target), 'mapBrowse')
+	return Reflect.apply(native, target, args)
+}
 
 function standard(
 	transaction: (this: ProxyHandlers<any>, native: (...args: any) => any, ...args: any[]) => any,
@@ -107,7 +144,7 @@ export const nativeTransactions: NativeDescriptor<any>[] = [
 	{
 		natives: [Array],
 		transactions: {
-			// #region modifications
+			// #region Array modifications
 
 			push(native: (...args: any) => any, ...args: any[]) {
 				const { target, handlers } = this
@@ -217,7 +254,7 @@ export const nativeTransactions: NativeDescriptor<any>[] = [
 			},
 
 			// #endregion
-			// #region consultation
+			// #region Array consultation
 			...standard(
 				wholeArrayConsultation,
 				'flat',
@@ -408,100 +445,96 @@ export const nativeTransactions: NativeDescriptor<any>[] = [
 	{
 		natives: [Set, WeakSet],
 		transactions: {
+			// #region Set modifications
+
 			add(native: (...args: any) => any, value: any) {
 				const { target, handlers } = this,
-					modification = {
-						type: 'set',
-						target,
-						value
-					}
+					modification = tSet(target, value)
 				if (chainSetHandlers(handlers, modification, 'setAdd'))
 					return Reflect.apply(native, target, [modification.value])
 			},
 			delete(native: (...args: any) => any, value: any) {
 				const { target, handlers } = this,
-					modification = {
-						type: 'set',
-						target,
-						value
-					}
+					modification = tSet(target, value)
 				if (chainSetHandlers(handlers, modification, 'setDelete'))
 					return Reflect.apply(native, target, [modification.value])
 			},
 			clear(native: (...args: any) => any) {
-				const { target, handlers } = this,
-					modification = {
-						type: 'set',
-						target
-					}
-				if (chainSetHandlers(handlers, modification, 'setClear'))
+				const { target, handlers } = this
+				if (chainSetHandlers(handlers, tSet(target), 'setClear'))
 					return Reflect.apply(native, target, [])
 			},
+
+			// #endregion
+			// #region Set consultation
+
+			...standard(
+				wholeSetConsultation,
+				'difference',
+				'entries',
+				'forEach',
+				'keys',
+				'values',
+				Symbol.iterator
+			),
+			...standard(
+				twoSetConsultation,
+				'intersection',
+				'isDisjointFrom',
+				'isSubsetOf',
+				'isSupersetOf',
+				'union',
+				'symmetricDifference'
+			),
 			has(native: (...args: any) => any, value: any) {
 				const { target, handlers } = this,
-					modification = {
-						type: 'set',
-						target,
-						value
-					}
+					modification = tSet(target, value)
 				if (chainGetHandlers(handlers, modification, 'setHas'))
 					return Reflect.apply(native, target, [modification.value])
 			}
+
+			// #endregion
 		}
 	},
 	{
 		natives: [Map, WeakMap],
 		transactions: {
+			// #region Map modifications
+
 			set(native: (...args: any) => any, key: any, value: any) {
 				const { target, handlers } = this,
-					modification = {
-						type: 'map',
-						target,
-						key,
-						value
-					}
+					modification = tMap(target, key, value)
 				if (chainSetHandlers(handlers, modification, 'mapSet'))
 					return Reflect.apply(native, target, [modification.key, modification.value])
 			},
 			delete(native: (...args: any) => any, key: any) {
 				const { target, handlers } = this,
-					modification = {
-						type: 'map',
-						target,
-						key
-					}
+					modification = tMap(target, key)
 				if (chainSetHandlers(handlers, modification, 'mapDelete'))
 					return Reflect.apply(native, target, [modification.key])
 			},
 			clear(native: (...args: any) => any) {
-				const { target, handlers } = this,
-					modification = {
-						type: 'map',
-						target
-					}
-				if (chainSetHandlers(handlers, modification, 'mapClear'))
+				const { target, handlers } = this
+				if (chainSetHandlers(handlers, tMap(target), 'mapClear'))
 					return Reflect.apply(native, target, [])
 			},
+
+			// #endregion
+			// #region Map consultation
+			...standard(wholeMapConsultation, 'entries', 'forEach', 'keys', 'values', Symbol.iterator),
 			has(native: (...args: any) => any, key: any) {
 				const { target, handlers } = this,
-					modification = {
-						type: 'map',
-						target,
-						key
-					}
+					modification = tMap(target, key)
 				if (chainGetHandlers(handlers, modification, 'mapHas'))
 					return Reflect.apply(native, target, [modification.key])
 			},
 			get(native: (...args: any) => any, key: any) {
 				const { target, handlers } = this,
-					modification = {
-						type: 'map',
-						target,
-						key,
-						value: Reflect.apply(native, target, [key])
-					}
+					modification = tMap(target, key, Reflect.apply(native, target, [key]))
 				if (chainGetHandlers(handlers, modification, 'mapGet')) return modification.value
 			}
+
+			// #endregion
 		}
 	},
 	{

@@ -70,9 +70,10 @@ export interface SetTransaction<Items, Obj extends ContentObject = Set<Items>>
 	value?: Items
 }
 
-export interface MapTransaction<key, Value, Obj extends ContentObject = Map<KeyAlgorithm, Value>> {
+export interface MapTransaction<Key, Value, Obj extends ContentObject = Map<Key, Value>>
+	extends Transaction<Obj> {
 	type: 'map'
-	key?: key
+	key?: Key
 	value?: Value
 }
 
@@ -83,6 +84,15 @@ export interface DateTransaction<Obj extends Date = Date> extends Transaction<Ob
 
 type IfArrayTransaction<Obj extends ContentObject, Returns = boolean | void> =
 	Obj extends Array<infer Items> ? (transaction: ArrayTransaction<Items, Obj>) => Returns : never
+type IfSetTransaction<Obj extends ContentObject, Returns = boolean | void> =
+	Obj extends Map<infer key, infer Value>
+		? (modification: MapTransaction<key, Value, Obj>) => Returns
+		: never
+
+export type IfMapTransaction<Obj extends ContentObject, Returns = boolean | void> =
+	Obj extends Map<infer key, infer Value>
+		? (modification: MapTransaction<key, Value, Obj>) => Returns
+		: never
 
 /**
  * Callbacks for our proxies
@@ -142,35 +152,21 @@ export interface ReactiveHandler<Obj extends ContentObject> {
 	// #endregion
 	// #region Set
 
-	setAdd?: Obj extends Set<infer Items>
-		? (modification: SetTransaction<Items, Obj>) => boolean | void
-		: never
-	setDelete?: Obj extends Set<infer Items>
-		? (modification: SetTransaction<Items, Obj>) => boolean | void
-		: never
-	setClear?: Obj extends Set<infer Items>
-		? (modification: SetTransaction<Items, Obj>) => boolean | void
-		: never
-	setHas?: Obj extends Set<infer Items> ? (modification: SetTransaction<Items, Obj>) => void : never
+	setAdd?: IfSetTransaction<Obj>
+	setDelete?: IfSetTransaction<Obj>
+	setClear?: IfSetTransaction<Obj>
+	setHas?: IfSetTransaction<Obj, void>
+	setBrowse?: IfSetTransaction<Obj, void>
 
 	// #endregion
 	// #region Map
 
-	mapSet?: Obj extends Map<infer key, infer Value>
-		? (modification: MapTransaction<key, Value, Obj>) => boolean | void
-		: never
-	mapDelete?: Obj extends Map<infer key, infer Value>
-		? (modification: MapTransaction<key, Value, Obj>) => boolean | void
-		: never
-	mapClear?: Obj extends Map<infer key, infer Value>
-		? (modification: MapTransaction<key, Value, Obj>) => void
-		: never
-	mapHas?: Obj extends Map<infer key, infer Value>
-		? (modification: MapTransaction<key, Value, Obj>) => void
-		: never
-	mapGet?: Obj extends Map<infer key, infer Value>
-		? (modification: MapTransaction<key, Value, Obj>) => void
-		: never
+	mapSet?: IfMapTransaction<Obj>
+	mapDelete?: IfMapTransaction<Obj>
+	mapClear?: IfMapTransaction<Obj>
+	mapHas?: IfMapTransaction<Obj, void>
+	mapGet?: IfMapTransaction<Obj, void>
+	mapBrowse?: IfMapTransaction<Obj, void>
 
 	// #endregion
 

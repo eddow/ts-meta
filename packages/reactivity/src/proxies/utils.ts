@@ -2,9 +2,11 @@ import {
 	ArrayIndexRange,
 	ArrayTransaction,
 	ContentObject,
+	MapTransaction,
 	OrderedReactiveHandlers,
 	PropertyTransaction,
 	ReactiveHandler,
+	SetTransaction,
 	Transaction
 } from '../types'
 
@@ -87,5 +89,21 @@ export const tArray = <Items = any, Obj extends Items[] = Items[]>(
 		: indexes instanceof ArrayIndexRange
 			? indexes
 			: new ArrayIndexRange(indexes),
+	...(value && { value })
+})
+
+export const tSet = <Items = any, Obj extends ContentObject = Set<Items>>(
+	target: Obj,
+	value?: Items
+): SetTransaction<Items, Obj> => ({ type: 'set', target, ...(value && { value }) })
+
+export const tMap = <Key = any, Value = any, Obj extends ContentObject = Map<Key, Value>>(
+	target: Obj,
+	key?: Key,
+	value?: Value
+): MapTransaction<Key, Value, Obj> => ({
+	type: 'map',
+	target,
+	...(key && { key }),
 	...(value && { value })
 })
